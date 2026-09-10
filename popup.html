@@ -1,7 +1,8 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <title>LinkedIn Shield</title>
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src https://api.anthropic.com https://api.openai.com https://*.aliyuncs.com https://api.deepseek.com"
@@ -17,7 +18,7 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: #0a0a0f;
         color: #e8e6f0;
-        font-size: 13px;
+        font-size: 14px;
       }
 
       .header {
@@ -28,6 +29,20 @@
         align-items: center;
         gap: 10px;
       }
+      .evidence-list {
+        max-height: 150px;
+        overflow: auto;
+        overflow-wrap: anywhere;
+        padding-left: 18px;
+        margin: 8px 0;
+      }
+      .evidence-list li {
+        margin-bottom: 8px;
+      }
+      #context-details summary {
+        cursor: pointer;
+        padding: 5px 0;
+      }
       .header svg {
         flex-shrink: 0;
       }
@@ -37,7 +52,7 @@
         letter-spacing: -0.01em;
       }
       .header .sub {
-        font-size: 11px;
+        font-size: 14px;
         color: #8886a0;
         margin-top: 2px;
       }
@@ -62,7 +77,7 @@
         line-height: 1;
       }
       .stat .label {
-        font-size: 10px;
+        font-size: 12px;
         color: #8886a0;
         margin-top: 4px;
         text-transform: uppercase;
@@ -75,7 +90,7 @@
         color: #f59e0b;
       }
       .stat.trackers .num {
-        color: #6366f1;
+        color: #aaa5ff;
       }
 
       .total-bar {
@@ -89,7 +104,7 @@
         align-items: center;
       }
       .total-bar .total-label {
-        font-size: 12px;
+        font-size: 14px;
         color: #8886a0;
       }
       .total-bar .total-num {
@@ -100,11 +115,13 @@
 
       .status {
         padding: 10px 18px;
-        font-size: 11px;
-        color: #56546a;
+        font-size: 14px;
+        color: #a6a3b8;
         border-top: 1px solid #1e1e2e;
         display: flex;
         justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
         align-items: center;
       }
       .status-dot {
@@ -123,11 +140,11 @@
       .ai-btn {
         width: 100%;
         padding: 8px;
-        background: #6366f1;
+        background: #4f46e5;
         color: #fff;
         border: none;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 600;
         cursor: pointer;
         transition: background 0.15s;
@@ -137,7 +154,7 @@
       }
       .ai-btn:disabled {
         background: #2a2a3e;
-        color: #56546a;
+        color: #a6a3b8;
         cursor: default;
       }
       .ai-result {
@@ -146,7 +163,7 @@
         background: #0d0d14;
         border: 1px solid #1e1e2e;
         border-radius: 8px;
-        font-size: 11.5px;
+        font-size: 14px;
         line-height: 1.6;
         color: #b0aec0;
         display: none;
@@ -163,8 +180,8 @@
         text-align: center;
       }
       .settings-link a {
-        color: #6366f1;
-        font-size: 11px;
+        color: #aaa5ff;
+        font-size: 14px;
         text-decoration: none;
         cursor: pointer;
       }
@@ -176,11 +193,11 @@
         padding: 8px 18px 12px;
         border-top: 1px solid #1e1e2e;
         text-align: center;
-        font-size: 10px;
-        color: #3a3854;
+        font-size: 14px;
+        color: #a6a3b8;
       }
       .footer a {
-        color: #56546a;
+        color: #a6a3b8;
         text-decoration: none;
       }
       .footer a:hover {
@@ -190,8 +207,8 @@
       .no-linkedin {
         padding: 30px 18px;
         text-align: center;
-        color: #56546a;
-        font-size: 12px;
+        color: #a6a3b8;
+        font-size: 14px;
       }
     </style>
   </head>
@@ -223,7 +240,7 @@
         </div>
         <div class="stat fingerprints">
           <div class="num" id="fingerprints-count">0</div>
-          <div class="label">Fingerprints</div>
+          <div class="label">API shields</div>
         </div>
         <div class="stat trackers">
           <div class="num" id="trackers-count">0</div>
@@ -232,27 +249,27 @@
       </div>
 
       <div class="total-bar">
-        <span class="total-label">Total blocked this session</span>
+        <span class="total-label">Blocks + active API shields</span>
         <span class="total-num" id="total-count">0</span>
       </div>
 
       <div id="context-section" style="display: none; padding: 8px 18px; border-top: 1px solid #1e1e2e">
-        <div
-          style="font-size: 10px; color: #8886a0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px"
-        >
-          What LinkedIn tried to collect
+        <div style="font-size: 14px; color: #8886a0; letter-spacing: 0.5px; margin-bottom: 6px">
+          Observed activity and protection
         </div>
-        <div id="context-details" style="font-size: 11px; color: #b0aec0; line-height: 1.5"></div>
+        <div id="context-details" style="font-size: 14px; color: #b0aec0; line-height: 1.5"></div>
       </div>
 
       <div class="ai-section">
         <button class="ai-btn" id="ai-analyze-btn">Explain with AI</button>
         <div class="ai-result" id="ai-result"></div>
-        <button class="ai-btn" id="share-btn" style="margin-top: 8px; background: #22c55e">Share Results</button>
+        <button class="ai-btn" id="share-btn" style="margin-top: 8px; background: #22c55e; color: #0a0a0f">
+          Share Results
+        </button>
       </div>
 
       <div class="status">
-        <span><span class="status-dot"></span> Shielded</span>
+        <span><span class="status-dot"></span><span id="shield-status">Waiting for page stats</span></span>
         <span id="page-url">linkedin.com</span>
       </div>
     </div>
@@ -267,7 +284,9 @@
 
     <div id="settings-panel" style="display: none; padding: 12px 18px; border-top: 1px solid #1e1e2e">
       <div style="margin-bottom: 8px">
-        <label style="font-size: 11px; color: #8886a0; display: block; margin-bottom: 4px">AI Provider</label>
+        <label for="ai-provider" style="font-size: 14px; color: #8886a0; display: block; margin-bottom: 4px"
+          >AI Provider</label
+        >
         <select
           id="ai-provider"
           style="
@@ -277,7 +296,7 @@
             border: 1px solid #1e1e2e;
             border-radius: 6px;
             color: #e8e6f0;
-            font-size: 12px;
+            font-size: 14px;
           "
         >
           <option value="openai">OpenAI</option>
@@ -286,7 +305,7 @@
         </select>
       </div>
       <div style="margin-bottom: 8px">
-        <label style="font-size: 11px; color: #8886a0; display: block; margin-bottom: 4px">API Key</label>
+        <label for="ai-key" style="font-size: 14px; color: #8886a0; display: block; margin-bottom: 4px">API Key</label>
         <input
           type="password"
           id="ai-key"
@@ -298,7 +317,7 @@
             border: 1px solid #1e1e2e;
             border-radius: 6px;
             color: #e8e6f0;
-            font-size: 12px;
+            font-size: 14px;
           "
         />
       </div>
@@ -308,17 +327,17 @@
           width: 100%;
           padding: 6px;
           background: #22c55e;
-          color: #fff;
+          color: #0a0a0f;
           border: none;
           border-radius: 6px;
-          font-size: 11px;
+          font-size: 14px;
           font-weight: 600;
           cursor: pointer;
         "
       >
         Save
       </button>
-      <div id="settings-msg" style="font-size: 10px; color: #22c55e; margin-top: 4px; text-align: center"></div>
+      <div id="settings-msg" style="font-size: 14px; color: #22c55e; margin-top: 4px; text-align: center"></div>
     </div>
 
     <div class="footer">

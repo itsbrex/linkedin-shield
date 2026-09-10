@@ -3,11 +3,18 @@
  * Tracks blocked probes, updates badge, handles AI analysis mode.
  */
 
+// Per-tab stats never fall back to activity from a different page.
+const tabStats = {};
+
 // ── Early injection: inject content.js into MAIN world before page scripts ──
-chrome.webNavigation?.onCommitted?.addListener(
-  (details) => {
-    if (details.frameId !== 0) return; // top frame only
-    if (!details.url.includes('linkedin.com')) return;
+chrome.webNavigation?.onCommitted?.addListener((details) => {
+  if (details.frameId !== 0) return;
+  delete tabStats[details.tabId];
+  chrome.action.setBadgeText({ text: '', tabId: details.tabId });
+  try {
+    const url = new URL(details.url);
+    if (!['http:', 'https:'].includes(url.protocol)) return;
+    if (url.hostname !== 'linkedin.com' && !url.hostname.endsWith('.linkedin.com')) return;
     chrome.scripting
       .executeScript({
         target: { tabId: details.tabId },
@@ -16,16 +23,12 @@ chrome.webNavigation?.onCommitted?.addListener(
         injectImmediately: true,
       })
       .catch(() => {}); // Ignore errors on restricted pages
-  },
-  { url: [{ hostContains: 'linkedin.com' }] },
-);
-
-// Per-tab stats
-const tabStats = {};
+  } catch (_e) {}
+});
 
 // Listen for stats from content scripts
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'shield_stats' && sender.tab) {
+  if (msg.type === 'shield_stats' && sender.tab && (sender.frameId ?? 0) === 0) {
     const tabId = sender.tab.id;
     tabStats[tabId] = {
       probes: msg.probes || 0,
@@ -51,12 +54,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'get_stats') {
-    // Try exact tab first, then fall back to most recent LinkedIn tab stats
-    let result = tabStats[msg.tabId];
-    if (!result || result.total === 0) {
-      const latest = Object.values(tabStats).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
-      if (latest && latest.total > 0) result = latest;
-    }
+    const result = tabStats[msg.tabId];
     sendResponse(result || { probes: 0, fingerprints: 0, trackers: 0, total: 0 });
     return true;
   }

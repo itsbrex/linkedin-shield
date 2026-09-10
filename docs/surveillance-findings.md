@@ -56,7 +56,7 @@ pre-commit lint-staged plus full tests. CI targets pull requests to `master`.
 
 - [x] Import exact extension ID/file evidence and validate the full captured set.
 - [x] Expand protections for confirmed probe and surveillance paths.
-- [ ] Make live reporting useful and truthful, including cookie-name detection.
+- [x] Make live reporting useful and truthful, including cookie-name detection.
 - [ ] Document contributor setup and provide repeatable checks.
 
 ## Detection contract
@@ -112,3 +112,22 @@ necessary before release.
 
 References: [Chrome DNR rules and URL matching](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest),
 [fetch network-failure behavior](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch).
+
+## Reporting improvements
+
+The popup now shows sampled target IDs and captured resource paths, allowlisted
+cookie names, and sanitized endpoint paths in keyboard-accessible disclosures.
+It refreshes all fields, including zero counts and cookie-only changes, and
+preserves open disclosures. Missing reports show zero and a waiting state.
+Active API shields are labeled separately from blocked attempts. AI requests
+and clipboard summaries contain aggregate counts only; AI calls remain explicit.
+
+Background state is scoped to the exact tab and cleared on top-level navigation,
+including navigation away from LinkedIn. Child-frame messages cannot overwrite
+the top-frame report. Runtime tests exercise shipped scripts with mocked Chrome
+APIs, including tab isolation, navigation reset, host lookalikes, missing reports,
+sanitization, live refresh, and explicit aggregate-only AI calls.
+
+Popup readability fixes address low-contrast text, small labels, missing input
+labels, and long evidence strings. The local design detector reports no remaining
+findings; no suppressions were added. Browser rendering still needs live review.

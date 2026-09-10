@@ -1,3 +1,4 @@
+/* global KNOWN_EXTENSIONS */
 /**
  * LinkedIn Shield — Popup Script v3.0
  * Reads stats directly from page DOM via chrome.scripting
@@ -5,7 +6,13 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const isLinkedIn = tab?.url?.includes('linkedin.com');
+  let isLinkedIn = false;
+  try {
+    const url = new URL(tab?.url);
+    isLinkedIn =
+      ['http:', 'https:'].includes(url.protocol) &&
+      (url.hostname === 'linkedin.com' || url.hostname.endsWith('.linkedin.com'));
+  } catch (_e) {}
 
   if (!isLinkedIn) {
     document.getElementById('main-content').style.display = 'none';
@@ -15,52 +22,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('page-url').textContent = new URL(tab.url).hostname;
 
-  // Read stats directly from page DOM
-  let stats = null;
-  try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => {
-        const attr = document.documentElement.getAttribute('data-linkedin-shield');
-        if (attr) return attr;
-        // If no attr yet, check if shield is active and return defaults
-        if (window[Symbol.for('__linkedinShieldActive')]) {
-          return JSON.stringify({
-            probes: 0,
-            fingerprints: 3,
-            trackers: 2,
-            total: 5,
-            knownScanSize: 6236,
-            context: { fingerprintApis: ['CPU', 'RAM', 'Battery'], detectionMethod: 'active' },
-          });
-        }
-        return null;
-      },
-    });
-    const raw = results?.[0]?.result;
-    if (raw) stats = JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed to read stats:', e);
+  // Page stats are advisory. Never fabricate activity while waiting for a report.
+  async function readStats() {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => document.documentElement.getAttribute('data-linkedin-shield'),
+      });
+      const raw = results?.[0]?.result;
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch (_e) {
+      return null;
+    }
   }
 
-  // If still nothing, use zero defaults
-  if (!stats) {
-    stats = { probes: 0, fingerprints: 0, trackers: 0, total: 0 };
+  function count(value) {
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
   }
-
-  // Render — show only real detected numbers
-  const probes = stats.probes || 0;
-
-  document.getElementById('probes-count').textContent = probes;
-  document.getElementById('fingerprints-count').textContent = stats.fingerprints || 0;
-  document.getElementById('trackers-count').textContent = stats.trackers || 0;
-  document.getElementById('total-count').textContent = stats.total || 0;
-
-  // Context section
-  const section = document.getElementById('context-section');
-  const details = document.getElementById('context-details');
-  section.style.display = 'block';
-
+  function strings(value, limit) {
+    return Array.isArray(value) ? [...new Set(value.filter((item) => typeof item === 'string'))].slice(0, limit) : [];
+  }
   function addContextRow(parent, color, boldText, suffix) {
     const row = document.createElement('div');
     row.style.marginBottom = '6px';
@@ -76,44 +58,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     return row;
   }
 
-  details.textContent = '';
-  addContextRow(details, '#ef4444', `${probes} extension probes blocked`);
-  addContextRow(
-    details,
-    '#f59e0b',
-    `${stats.fingerprints || 0} fingerprint APIs spoofed`,
-    ' \u2014 CPU cores, RAM, battery',
-  );
-  addContextRow(
-    details,
-    '#6366f1',
-    `${stats.trackers || 0} surveillance endpoints blocked`,
-    ' \u2014 sensorCollect + HUMAN Security',
-  );
+  const details = document.getElementById('context-details');
+  function addEvidence(id, title, rows, wasOpen) {
+    if (!rows.length) return;
+    const disclosure = document.createElement('details');
+    disclosure.id = id;
+    disclosure.open = wasOpen;
+    const summary = document.createElement('summary');
+    summary.textContent = `${title} (${rows.length})`;
+    disclosure.appendChild(summary);
+    const list = document.createElement('ul');
+    list.className = 'evidence-list';
+    for (const text of rows) {
+      const item = document.createElement('li');
+      item.textContent = text;
+      list.appendChild(item);
+    }
+    disclosure.appendChild(list);
+    details.appendChild(disclosure);
+  }
 
-  window._shieldStats = stats;
+  function renderStats(raw) {
+    const stats = {
+      probes: count(raw?.probes),
+      fingerprints: count(raw?.fingerprints),
+      trackers: count(raw?.trackers),
+    };
+    stats.total = stats.probes + stats.fingerprints + stats.trackers;
+    for (const key of ['probes', 'fingerprints', 'trackers', 'total']) {
+      document.getElementById(`${key}-count`).textContent = stats[key];
+    }
+    document.getElementById('shield-status').textContent = raw ? 'Shield active' : 'Waiting for page stats';
+    document.getElementById('context-section').style.display = 'block';
+    const open = new Set([...details.querySelectorAll('details[open]')].map((item) => item.id));
+    details.textContent = '';
+    addContextRow(details, '#ef4444', `${stats.probes} extension probes blocked`);
+    addContextRow(details, '#f59e0b', `${stats.fingerprints} fingerprint APIs protected`);
+    addContextRow(details, '#6366f1', `${stats.trackers} tracker requests / frames blocked`);
 
-  // Poll for live updates every 3 seconds
-  const pollInterval = setInterval(async () => {
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => document.documentElement.getAttribute('data-linkedin-shield'),
+    const context = raw?.context;
+    const targets = strings(context?.extensionIds, 50)
+      .filter((id) => /^[a-p]{32}$/.test(id) || /^[a-f0-9-]{36}$/i.test(id))
+      .map((id) => {
+        const extension = KNOWN_EXTENSIONS[id];
+        return extension
+          ? `${extension.name} — ${id}${extension.file ? ` — captured resource: ${extension.file}` : ''}`
+          : `Unidentified extension — ${id}`;
       });
-      const raw = results?.[0]?.result;
-      if (raw) {
-        const live = JSON.parse(raw);
-        if (live.probes > 0 || live.trackers > (stats.trackers || 0)) {
-          // Live data available — update display
-          document.getElementById('probes-count').textContent = live.probes;
-          document.getElementById('fingerprints-count').textContent = live.fingerprints || 3;
-          document.getElementById('trackers-count').textContent = live.trackers || 2;
-          document.getElementById('total-count').textContent = live.total || 0;
-          window._shieldStats = live;
+    addEvidence('extension-evidence', 'Probe targets', targets, open.has('extension-evidence'));
+    if (targets.length) addContextRow(details, '#8886a0', 'Targets are not proof of installation.');
+
+    const cookies = strings(context?.cookieNames, 6).filter((name) =>
+      ['df_ts', 'li_apfcdc', '_px3', '_pxhd', '_pxvid', 'pxcts'].includes(name),
+    );
+    addEvidence('cookie-evidence', 'Observed cookie names', cookies, open.has('cookie-evidence'));
+    if (cookies.length) addContextRow(details, '#8886a0', 'Cookie values stay private; cookies remain unchanged.');
+
+    const endpoints = [];
+    for (const value of strings(context?.blockedUrls, 10)) {
+      try {
+        const url = new URL(value);
+        if (['http:', 'https:'].includes(url.protocol) && /(^|\.)(linkedin\.com|protechts\.net)$/.test(url.hostname)) {
+          endpoints.push(url.origin + url.pathname);
         }
-      }
-    } catch (_e) {}
-  }, 3000);
+      } catch (_e) {}
+    }
+    addEvidence('endpoint-evidence', 'Blocked endpoints', endpoints, open.has('endpoint-evidence'));
+    window._shieldStats = stats;
+  }
+
+  renderStats(await readStats());
+  const pollInterval = setInterval(async () => renderStats(await readStats()), 3000);
 
   // AI button
   document.getElementById('ai-analyze-btn').addEventListener('click', async () => {
@@ -141,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const apiKey = settings.ai_api_key;
       const s = window._shieldStats || {};
 
-      const prompt = `A user visited LinkedIn. LinkedIn Shield blocked: ${s.probes || 0} extension probes, ${s.fingerprints || 0} fingerprint APIs spoofed, ${s.trackers || 0} tracker endpoints blocked. Explain in 3-4 sentences what LinkedIn was trying to collect, the privacy risk, and what this data could be used for. Be direct.`;
+      const prompt = `LinkedIn Shield reports ${s.probes || 0} blocked extension probes, ${s.fingerprints || 0} active fingerprint API shields, and ${s.trackers || 0} blocked tracker requests or frames. Explain these counts and their privacy implications in 3-4 sentences. Active API shields do not prove collection attempts; probe targets do not prove installed extensions. These advisory page counts exclude static network-rule matches and child-frame activity. Do not infer activity from zero counts.`;
 
       let text = '';
 
@@ -193,10 +208,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('share-btn').addEventListener('click', () => {
     const s = window._shieldStats || {};
     const probeText = `${s.probes || 0} extension probes blocked`;
-    let text = `LinkedIn Shield blocked surveillance on my last visit:\n\n`;
+    let text = `LinkedIn Shield activity and protection on my last visit:\n\n`;
     text += `🔍 ${probeText}\n`;
-    text += `🖥️ ${s.fingerprints || 3} device fingerprints spoofed (CPU, RAM, battery)\n`;
-    text += `🛡️ ${s.trackers || 2} tracker endpoints blocked\n`;
+    text += `🖥️ ${s.fingerprints || 0} device fingerprint APIs protected\n`;
+    text += `🛡️ ${s.trackers || 0} tracker requests / frames blocked\n`;
     text += `\nLinkedIn checks for: job search tools, ad blockers, password managers, VPNs, accessibility aids, developer tools\n`;
     text += `\nOpen-source: github.com/Quality-Max/linkedin-shield`;
     navigator.clipboard.writeText(text).then(() => {
