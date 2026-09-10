@@ -141,3 +141,38 @@ runtime syntax checks, and the full test suite against tracked working files plu
 explicitly named new files. It avoids sweeping unrelated untracked experiments
 into lint/format checks. The README now describes actual fixed API values, popup
 AI requests, captured sample size, cookie-name observations, and coverage gaps.
+
+## Validation record
+
+- Feature commits: `dad0274` (catalog), `dc42942` (protections), `9b1ffea`
+  (reporting), and `0be0eb2` (contributor workflow).
+- The shared verifier passed in the working tree and a clean detached checkout
+  of `0be0eb2` after a fresh lockfile install: ESLint, Prettier, five runtime
+  syntax checks, and **121 tests across eight files**. The checkout remained clean.
+- Each behavior commit passed the repository's pre-commit checks. The popup
+  design detector passed without suppressions. Rendering is not verified by a
+  static design detector or jsdom.
+- Original plan-viewer files matched saved SHA-256 hashes, and the original
+  `package.json` patch matched byte-for-byte. They remain outside these commits.
+- CodeDB MCP continued serving a stale baseline snapshot after reindexing. The
+  CodeDB CLI rebuilt the index, resolved the current `isTrackerUrl` definition
+  and caller, and passed the required refresh probe. Current source and tests
+  were checked directly where MCP results were stale.
+- Comet was identified from its running application and matching open tabs; its
+  local selector pin was refreshed. The browser automation connection then
+  disappeared before a live Shield smoke test completed. Reconnection is needed
+  to verify authenticated browsing, actual network rules, and popup rendering.
+  No logged-in browser validation or remote CI result is claimed.
+
+## Ranked follow-up opportunities
+
+1. Add a reproducible, data-only capture importer that previews catalog and
+   endpoint changes, preserves researched labels, and updates provenance checks.
+2. Add an extension-loaded browser regression harness for DNR/header behavior,
+   iframe timing, popup rendering, and synthetic normal-page compatibility.
+3. Separate network-rule blocks, API shields, and per-frame observations into
+   explicit counters, with document/navigation identity and no double counting.
+4. Investigate remaining worker/native-API and DOM-based discovery paths using
+   isolated fixtures before adding broader hooks or permissions.
+5. Bind each AI provider's endpoint, model, and key settings together so provider
+   switching cannot reuse stale configuration; add a clear local-only explanation.
