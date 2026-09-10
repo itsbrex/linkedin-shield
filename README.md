@@ -6,31 +6,33 @@ Block LinkedIn's hidden extension scanning, device fingerprinting, and tracker p
 
 **Open-source. No tracking. No account required.**
 
-## What LinkedIn Does
+## What the captured script contains
 
-Every time you visit linkedin.com, hidden JavaScript:
+The JavaScript sample analyzed for this project contains **4,934 extension ID /
+resource pairs**, device fingerprint collectors, invisible HUMAN frames, and
+collection paths including `/platform-telemetry/li/apfcDf` and `/apfc/collect`.
+Static code shows possible behavior; it does not prove every collector runs on
+every visit or that any targeted extension is installed.
 
-- Probes **6,236 browser extensions** by ID to detect what you have installed
-- Collects **48+ device data points** (CPU cores, memory, screen, battery, timezone)
-- Injects a **zero-pixel invisible iframe** from HUMAN Security (li.protechts.net)
-- Sends it all encrypted to LinkedIn servers — no consent, no opt-out
-
-Source: [BrowserGate investigation](https://www.bleepingcomputer.com/news/security/linkedin-secretly-scans-for-6-000-plus-chrome-extensions-collects-data/) (April 2026)
+See [source evidence and coverage limits](docs/surveillance-findings.md).
+Background reading: [BrowserGate investigation](https://www.bleepingcomputer.com/news/security/linkedin-secretly-scans-for-6-000-plus-chrome-extensions-collects-data/).
 
 ## What LinkedIn Shield Does
 
 ### Standalone Mode (no LLM needed)
 
 - Blocks extension probing (intercepts `chrome-extension://` URL checks)
-- Blocks tracker endpoints (`/li/track`, `/sensorCollect`, `protechts.net`)
-- Randomizes device fingerprint data (CPU cores, memory, battery)
+- Blocks captured tracker endpoints, APFC collection, and fingerprint loaders
+- Removes the `X-Li-Apfc-Data` fingerprint header while preserving the request
+- Supplies fixed CPU, memory, and battery values through protected APIs
 - Removes hidden tracking iframes
-- Shows real-time badge count of blocked probes
+- Shows observed blocks and active API shields with sampled probe resources
+- Reports six tracking-cookie names without changing cookies or saving values
 
 ### AI Analysis Mode (optional)
 
-- Click "Analyze with AI" to get a plain-English explanation of what was blocked
-- Supports Claude (Anthropic), OpenAI, QMax, or any OpenAI-compatible provider
+- Click "Explain with AI" for a plain-English explanation of aggregate counts
+- Settings support Claude (Anthropic), OpenAI, and QMax
 - BYOLLM — bring your own API key, stored locally in browser storage
 
 ## Install
@@ -51,21 +53,27 @@ Coming soon.
 **Layer 1: Declarative Net Request Rules** (`rules.json`)
 
 - Blocks tracking endpoints at the network level before JavaScript runs
-- Blocks `protechts.net` iframe, `sensorCollect`, `/li/track`, `spectroscopy`
+- Covers HUMAN frames, APFC collection, `sensorCollect`, `/li/track`, and `spectroscopy`
+- Removes only the captured fingerprint header on matching LinkedIn requests
 
 **Layer 2: Content Script** (`content.js`)
 
-- Intercepts `fetch()` and `XMLHttpRequest` to block `chrome-extension://` probes
-- Overrides `performance.getEntriesByName()` to prevent timing-based detection
-- Randomizes `navigator.hardwareConcurrency` and `navigator.deviceMemory`
-- Blocks `navigator.getBattery()` API
+- Intercepts `fetch()`, `XMLHttpRequest`, and `sendBeacon()` on matching pages
+- Rejects extension fetch probes; a fulfilled HTTP 404 would still reveal a hit
+- Filters extension-resource entries from performance timing lookups
+- Supplies fixed CPU/RAM values and a full-battery result
 - MutationObserver removes hidden iframes as they're injected
 
 **Layer 3: AI Analysis** (optional)
 
-- Background service worker sends blocked stats to your chosen LLM
+- Popup sends aggregate counts to your configured provider after your click
 - Returns a plain-English privacy risk assessment
-- No data leaves your machine unless you click "Analyze"
+- Probe IDs, endpoint samples, and cookie names are excluded from AI requests
+
+Popup counts are advisory page reports, not a complete network audit. Static
+network-rule matches and child-frame activity are not included. An active API
+shield does not prove a collection attempt. Workers, retained native APIs, other
+fingerprint surfaces, and DOM-based extension discovery remain coverage gaps.
 
 ## Privacy
 
@@ -83,12 +91,9 @@ Coming soon.
 
 ## Contributing
 
-PRs welcome. Key areas:
-
-- Add more LinkedIn tracking endpoints as they're discovered
-- Firefox Manifest V2 port
-- Better fingerprint randomization
-- UI improvements
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, contribution standards, evidence
+requirements, tests, browser review, and commit guidance. Use Node 24 and `npm ci`,
+then run `node scripts/verify.mjs` for the same checks used by CI.
 
 ## License
 

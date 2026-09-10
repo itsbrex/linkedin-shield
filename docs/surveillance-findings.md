@@ -21,8 +21,8 @@ of available code paths, not proof that every path runs on every LinkedIn visit.
   remain separate from captured file evidence. An old 33-character Google Docs
   Offline ID was removed as invalid, without guessing a replacement.
 
-The existing README's 6,236 figure comes from its linked historical investigation;
-it is not the count in this supplied sample. Catalog membership does not prove
+The baseline README's 6,236 figure came from its linked historical investigation;
+the README now identifies this supplied sample's count. Catalog membership does not prove
 installation, nor does a blocked probe prove that a targeted extension exists.
 
 ## Repository map
@@ -57,7 +57,7 @@ pre-commit lint-staged plus full tests. CI targets pull requests to `master`.
 - [x] Import exact extension ID/file evidence and validate the full captured set.
 - [x] Expand protections for confirmed probe and surveillance paths.
 - [x] Make live reporting useful and truthful, including cookie-name detection.
-- [ ] Document contributor setup and provide repeatable checks.
+- [x] Document contributor setup and provide repeatable checks.
 
 ## Detection contract
 
@@ -131,3 +131,13 @@ sanitization, live refresh, and explicit aggregate-only AI calls.
 Popup readability fixes address low-contrast text, small labels, missing input
 labels, and long evidence strings. The local design detector reports no remaining
 findings; no suppressions were added. Browser rendering still needs live review.
+
+## Contributor workflow
+
+`CONTRIBUTING.md` now documents the setup, architecture, evidence and privacy
+standards, public-seam regression tests, review expectations, and browser checks.
+`.nvmrc` and CI both select Node 24. `node scripts/verify.mjs` runs lint, format,
+runtime syntax checks, and the full test suite against tracked working files plus
+explicitly named new files. It avoids sweeping unrelated untracked experiments
+into lint/format checks. The README now describes actual fixed API values, popup
+AI requests, captured sample size, cookie-name observations, and coverage gaps.

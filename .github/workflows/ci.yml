@@ -14,24 +14,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
 
-      - name: Lint
-        run: npx eslint .
-
-      - name: Format check
-        run: npx prettier --check '**/*.{js,json,md,html}'
-
-      - name: Syntax check
-        run: |
-          node --check background.js
-          node --check content.js
-          node --check popup.js
-          node --check bridge.js
-          node --check known-extensions.js
-
-      - name: Tests
-        run: npm test
+      - name: Verify
+        run: node scripts/verify.mjs
