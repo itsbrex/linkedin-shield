@@ -1,55 +1,61 @@
-/**
- * Known extensions data validation
- */
+/** Catalog integrity, including every captured ID/resource pair. */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
 
-// Parse the JS file to extract data
-const src = readFileSync(resolve(__dirname, '../known-extensions.js'), 'utf8');
+const source = readFileSync(new URL('../known-extensions.js', import.meta.url), 'utf8');
+const { KNOWN_EXTENSIONS, CATEGORY_RISKS, EXTENSION_PROBES } = runInNewContext(
+  `${source}\n({ KNOWN_EXTENSIONS, CATEGORY_RISKS, EXTENSION_PROBES });`,
+);
 
-// Extract KNOWN_EXTENSIONS object entries
-const extMatches = [...src.matchAll(/^\s*([a-z0-9]+):\s*\{\s*name:\s*'([^']+)',\s*category:\s*'([^']+)'\s*\}/gm)];
+describe('Known Extensions — Captured Registry', () => {
+  it('preserves all 4,934 unique ID/file pairs from const o', () => {
+    const pairs = Object.entries(EXTENSION_PROBES).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    expect(pairs).toHaveLength(4934);
+    // Independently calculated from the source array, before catalog generation.
+    expect(createHash('sha256').update(JSON.stringify(pairs)).digest('hex')).toBe(
+      '2b1825e71d31f243283623d96e7d7ac04a281bd91fe8ff01bace34c6de50820b',
+    );
+  });
+
+  it('retains exact filenames, including bracketed font names', () => {
+    expect(KNOWN_EXTENSIONS.aaaeoelkococjpgngfokhbkkfiiegolp.file).toBe('icon/16.png');
+    expect(KNOWN_EXTENSIONS.dhkfoinnpjgabapcgjkmjophfincioij.file).toBe('assets/fonts/vazir/Vazirmatn[wght].woff2');
+    expect(KNOWN_EXTENSIONS.pppndnondekehijelkdnlihcfehjacfe.file).toBe('jc.98ee31a0.css');
+  });
+
+  it('does not invent names for unidentified extensions', () => {
+    expect(KNOWN_EXTENSIONS.aaaeoelkococjpgngfokhbkkfiiegolp).toEqual({
+      name: 'Unidentified extension',
+      category: 'Unclassified',
+      file: 'icon/16.png',
+    });
+    expect(KNOWN_EXTENSIONS.cjpalhdlnbpafiamejdnhcphjbkeiagm.name).toBe('uBlock Origin');
+  });
+
+  it('exposes every captured file through KNOWN_EXTENSIONS', () => {
+    for (const [id, file] of Object.entries(EXTENSION_PROBES)) {
+      expect(KNOWN_EXTENSIONS[id].file).toBe(file);
+    }
+  });
+});
 
 describe('Known Extensions — Data Integrity', () => {
-  it('has extension entries defined', () => {
-    expect(extMatches.length).toBeGreaterThan(20);
-  });
-
-  it('all extension IDs are lowercase alphabetic (Chrome format)', () => {
-    for (const m of extMatches) {
-      expect(m[1]).toMatch(/^[a-z]{32,33}$/);
+  it('uses valid Chrome IDs and defined category descriptions', () => {
+    for (const [id, extension] of Object.entries(KNOWN_EXTENSIONS)) {
+      expect(id).toMatch(/^[a-p]{32}$/);
+      expect(extension.name.length).toBeGreaterThan(0);
+      expect(CATEGORY_RISKS[extension.category]).toBeTruthy();
     }
   });
 
-  it('all extension IDs are unique', () => {
-    const ids = extMatches.map((m) => m[1]);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('all extensions have non-empty names', () => {
-    for (const m of extMatches) {
-      expect(m[2].length).toBeGreaterThan(0);
-    }
-  });
-
-  it('all extensions have non-empty categories', () => {
-    for (const m of extMatches) {
-      expect(m[3].length).toBeGreaterThan(0);
-    }
-  });
-
-  it('has CATEGORY_RISKS defined', () => {
-    expect(src).toContain('CATEGORY_RISKS');
-  });
-
-  it('all extension categories appear in CATEGORY_RISKS', () => {
-    const categories = [...new Set(extMatches.map((m) => m[3]))];
-    for (const cat of categories) {
-      // Category keys may be quoted ('Ad Blocker':) or unquoted (Privacy:)
-      const quoted = src.includes(`'${cat}':`);
-      const unquoted = src.includes(`${cat}:`);
-      expect(quoted || unquoted).toBe(true);
+  it('keeps probe paths relative to extension origins', () => {
+    for (const file of Object.values(EXTENSION_PROBES)) {
+      expect(typeof file).toBe('string');
+      expect(file.length).toBeGreaterThan(0);
+      expect(file).not.toMatch(/^(?:\/|[a-z]+:)/i);
+      expect(file.split('/')).not.toContain('..');
     }
   });
 });
