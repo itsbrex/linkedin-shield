@@ -34,7 +34,7 @@ installation, nor does a blocked probe prove that a targeted extension exists.
 | `bridge.js`                           | ISOLATED-world relay to extension runtime                       | Page-provided statistics are advisory, not trusted attestation              |
 | `background.js`                       | Early injection, per-tab badges, optional DNR debug counts      | Debug events need feedback permission; fallback can mix tabs                |
 | `popup.html`, `popup.js`              | Live stats, explicit AI analysis, local settings                | AI calls originate in popup; some fallbacks invent nonzero counts           |
-| `known-extensions.js`                 | Local ID/name/category/resource reference                       | Previously 34 hand-labeled entries; not loaded by popup                     |
+| `known-extensions.js`                 | Local ID/name/category/resource reference                       | Previously 34 hand-labeled entries; loaded by popup HTML but unused by UI   |
 | `tests/`, ESLint, Prettier, Husky, CI | npm-based validation                                            | Several tests duplicate implementation instead of loading runtime files     |
 
 No `CONTRIBUTING.md` existed at baseline. Existing conventions: ESM JavaScript,
@@ -55,7 +55,7 @@ pre-commit lint-staged plus full tests. CI targets pull requests to `master`.
 ## Logical commit checklist
 
 - [x] Import exact extension ID/file evidence and validate the full captured set.
-- [ ] Expand protections for confirmed probe and surveillance paths.
+- [x] Expand protections for confirmed probe and surveillance paths.
 - [ ] Make live reporting useful and truthful, including cookie-name detection.
 - [ ] Document contributor setup and provide repeatable checks.
 
@@ -66,3 +66,49 @@ path also treats any response object as a hit. HTTP status is never checked.
 Returning a synthetic 404 therefore reports a false positive to the scanner.
 Blocked extension fetches must reject like an inaccessible extension resource.
 Regression coverage must reproduce both serial and `Promise.allSettled` callers.
+
+## Additional captured signals
+
+Line references below refer to the original supplied bundle, not the generated catalog.
+
+| Evidence                                                                                             | Location                 | Interpretation and treatment                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/platform-telemetry/li/apfcDf`, `/apfc/collect`                                                     | 9473–9475                | Encrypted fingerprint upload and combined payload collection; block exact path families on LinkedIn                                                        |
+| `https://merchantpool1.linkedin.com/mdt.js`                                                          | 9496–9498                | Device-fingerprint script initialized with browser-cookie-derived session ID; block this loader                                                            |
+| `/li/track`, `AedEvent`, `SpectroscopyEvent`                                                         | 1982, 9539–9553          | General event transport; extension enumeration and DOM-discovered extension IDs use tracking events; block transport, accepting loss of ordinary analytics |
+| `X-Li-Apfc-Data`                                                                                     | 9471–9472                | Alternate fingerprint header on ordinary requests; remove only this header on LinkedIn XHR/fetch, preserve request and authentication headers              |
+| `li.protechts.net/index.html`, `index_stg.html`                                                      | 9501–9518                | Invisible HUMAN frames with browser hash, request ID, timestamp, and app ID; DNR blocks network, observer cleans DOM                                       |
+| `df_ts`                                                                                              | 9490–9493                | Sampling timestamp; observe name only, never delete or rewrite                                                                                             |
+| `li_apfcdc`                                                                                          | 9526–9532                | Base64 collection context with tracking/member/session identifiers; observe name only, never decode or persist value                                       |
+| `_px3`, `_pxhd`, `_pxvid`, `pxcts`                                                                   | 9515–9518                | HUMAN cookies relayed through `getHSCookiesResponse` and `cookie` messages; observe names only                                                             |
+| `bcookie`, `JSESSIONID`                                                                              | 2328, 123                | Browser identity and CSRF/session context; preserve these cookies and authentication                                                                       |
+| `DNA_ENCRYPTED`, `DFP_JS_PLAINTEXT`, `HUMAN_JS_PLAINTEXT`, reCAPTCHA payload labels                  | 9472                     | Payload aggregation includes multiple collectors; header removal closes one alternate route                                                                |
+| Canvas, WebGL, fonts, audio, media devices, screen, storage availability, timezone, network, battery | 2216 onward, 9570 onward | Broad fingerprint surface; retain existing CPU/RAM/battery shields, document remaining surface rather than spoof everything                                |
+| DOM traversal of text and element attributes for `chrome-extension://`                               | 9547–9553                | Passive extension discovery remains possible; do not hide arbitrary DOM content and break the site                                                         |
+
+Storage references in the fingerprint component check storage API availability;
+they do not prove collection of every stored key/value. reCAPTCHA Enterprise and
+challenge/login paths remain intact. Blocking privacy-related APFC requests or
+headers may still affect LinkedIn risk checks; authenticated smoke testing remains
+necessary before release.
+
+## Protection and measurement boundaries
+
+- `fetch` rejects blocked probes and tracker requests; `sendBeacon` returns false.
+  Blocked `XMLHttpRequest.open` aborts any previous request and throws `NetworkError`
+  before native open, preventing accidental reuse of a prior URL.
+- Timing lookups hide extension-resource entries without claiming that an observed
+  request was blocked. A page retaining original APIs or using workers can bypass
+  MAIN-world hooks; DNR still covers the explicitly listed HTTP endpoints.
+- Shields run in matching child frames. Only the top frame publishes stats; child
+  frame activity and static DNR matches are not included in popup totals.
+- Cookie observations are distinct from blocked requests. Native reads/writes are
+  forwarded unchanged; only six allowlisted names enter stats. HttpOnly cookies,
+  pre-injection transient cookies, and the Cookie Store API are outside this observer.
+- Counts continue after sample limits: up to 50 unique extension IDs, ten unique
+  endpoint URLs, and six cookie names. URLs omit credentials, queries and fragments.
+- DOM cleanup cannot prove that a frame made no request; DNR supplies the network
+  barrier. MAIN-world stats remain page-modifiable and are advisory.
+
+References: [Chrome DNR rules and URL matching](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest),
+[fetch network-failure behavior](https://developer.mozilla.org/en-US/docs/Web/API/Window/fetch).

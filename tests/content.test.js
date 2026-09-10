@@ -1,179 +1,242 @@
-/**
- * Content script tests — fetch proxy, fingerprint spoofing, stats writing
- */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+/** Execute the shipped MAIN-world script against public browser APIs. */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
 
-describe('Content Script — Fetch Proxy', () => {
-  let probeCount;
-  let probedExtensions;
-  let blockedUrls;
-  let nativeFetch;
-  let fetchProxy;
+const source = readFileSync(new URL('../content.js', import.meta.url), 'utf8');
+const probe = 'chrome-extension://aaaeoelkococjpgngfokhbkkfiiegolp/icon/16.png';
+const trackerPaths = ['/platform-telemetry/li/apfcDf', '/apfc/collect', '/li/track', '/sensorCollect'];
+let dom, win, nativeFetch, nativeOpen, nativeBeacon, timers, entries;
 
-  beforeEach(() => {
-    probeCount = 0;
-    probedExtensions = [];
-    blockedUrls = [];
-    nativeFetch = vi.fn(() => Promise.resolve(new Response('OK')));
+function start() {
+  win.eval(source);
+}
+function stats() {
+  for (const callback of timers) callback();
+  return JSON.parse(win.document.documentElement.getAttribute('data-linkedin-shield'));
+}
 
-    fetchProxy = new Proxy(nativeFetch, {
-      apply(target, thisArg, args) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-        if (url.includes('chrome-extension://') || url.includes('moz-extension://')) {
-          probeCount++;
-          if (probedExtensions.length < 20) {
-            const m = url.match(/(?:chrome|moz)-extension:\/\/([^/]+)/);
-            if (m && m[1] !== 'invalid') probedExtensions.push(m[1]);
-          }
-          return Promise.resolve(new Response('', { status: 404 }));
-        }
-        if (url.includes('sensorCollect') || url.includes('spectroscopy')) {
-          if (blockedUrls.length < 10) blockedUrls.push(url.substring(0, 80));
-        }
-        return Reflect.apply(target, thisArg, args);
-      },
-    });
+beforeEach(() => {
+  dom = new JSDOM('<!doctype html><html><body></body></html>', {
+    url: 'https://www.linkedin.com/feed/',
+    runScripts: 'outside-only',
   });
+  win = dom.window;
+  timers = [];
+  entries = [];
+  win.setInterval = vi.fn((callback) => {
+    timers.push(callback);
+    return timers.length;
+  });
+  win.setTimeout = vi.fn((callback) => {
+    timers.push(callback);
+    return timers.length;
+  });
+  win.postMessage = vi.fn();
+  win.Response = Response;
+  nativeFetch = win.fetch = vi.fn(async () => ({ status: 200 }));
+  nativeOpen = vi.fn();
+  win.XMLHttpRequest = class {
+    open(...args) {
+      return nativeOpen(...args);
+    }
+    abort() {
+      this.aborted = true;
+    }
+  };
+  nativeBeacon = win.navigator.sendBeacon = vi.fn(() => true);
+  Object.defineProperty(win.navigator, 'deviceMemory', { configurable: true, value: 16 });
+  win.navigator.getBattery = vi.fn();
+  win.performance.getEntries = vi.fn(() => entries);
+  win.performance.getEntriesByType = vi.fn(() => entries);
+  win.performance.getEntriesByName = vi.fn((name) => entries.filter((entry) => entry.name === String(name)));
+});
+afterEach(() => dom.window.close());
 
-  it('blocks chrome-extension:// probes and returns 404', async () => {
-    const resp = await fetchProxy('chrome-extension://abcdef123456/manifest.json');
-    expect(resp.status).toBe(404);
-    expect(probeCount).toBe(1);
-    expect(probedExtensions).toContain('abcdef123456');
+describe('Extension probe protection', () => {
+  it('rejects inaccessible extensions instead of fulfilling with HTTP 404', async () => {
+    start();
+    await expect(win.fetch(probe)).rejects.toThrow('Failed to fetch');
     expect(nativeFetch).not.toHaveBeenCalled();
+    expect(stats().probes).toBe(1);
+    expect(stats().context.extensionIds).toEqual(['aaaeoelkococjpgngfokhbkkfiiegolp']);
   });
 
-  it('blocks moz-extension:// probes', async () => {
-    const resp = await fetchProxy('moz-extension://some-firefox-ext/manifest.json');
-    expect(resp.status).toBe(404);
-    expect(probeCount).toBe(1);
-    expect(probedExtensions).toContain('some-firefox-ext');
-  });
-
-  it('skips "invalid" extension IDs', async () => {
-    await fetchProxy('chrome-extension://invalid/manifest.json');
-    expect(probeCount).toBe(1);
-    expect(probedExtensions).toHaveLength(0);
-  });
-
-  it('passes through normal URLs', async () => {
-    await fetchProxy('https://www.linkedin.com/feed/');
-    expect(probeCount).toBe(0);
-    expect(nativeFetch).toHaveBeenCalledWith('https://www.linkedin.com/feed/');
-  });
-
-  it('logs sensorCollect URLs but still passes them through', async () => {
-    await fetchProxy('https://www.linkedin.com/li/sensorCollect');
-    expect(blockedUrls).toHaveLength(1);
-    expect(nativeFetch).toHaveBeenCalled();
-  });
-
-  it('logs spectroscopy URLs', async () => {
-    await fetchProxy('https://www.linkedin.com/spectroscopy/api');
-    expect(blockedUrls).toHaveLength(1);
-  });
-
-  it('caps probedExtensions at 20', async () => {
-    for (let i = 0; i < 25; i++) {
-      await fetchProxy(`chrome-extension://ext${i}/manifest.json`);
+  it('defeats both Promise.allSettled and serial truthy-response detection', async () => {
+    start();
+    const results = await Promise.allSettled([win.fetch(probe), win.fetch(new win.URL(probe))]);
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    const hits = [];
+    try {
+      if (await win.fetch({ url: probe })) hits.push(probe);
+    } catch {
+      /* expected network failure */
     }
-    expect(probeCount).toBe(25);
-    expect(probedExtensions).toHaveLength(20);
+    expect(hits).toEqual([]);
+    expect(stats().probes).toBe(3);
+    expect(stats().context.extensionIds).toHaveLength(1);
   });
 
-  it('caps blockedUrls at 10', async () => {
+  it('blocks Firefox probes and invalid Chrome probes without reporting invalid IDs', async () => {
+    start();
+    await expect(win.fetch('moz-extension://12345678-1234-1234-1234-123456789012/icon.png')).rejects.toThrow();
+    await expect(win.fetch('chrome-extension://invalid/icon.png')).rejects.toThrow();
+    expect(stats().probes).toBe(2);
+    expect(stats().context.extensionIds).toEqual(['12345678-1234-1234-1234-123456789012']);
+  });
+
+  it('preserves ordinary requests and does not match extension URLs embedded in query strings', async () => {
+    start();
+    const url = 'https://www.linkedin.com/search/?q=' + probe;
+    const options = { method: 'POST', body: 'ordinary request' };
+    await win.fetch(url, options);
+    expect(nativeFetch).toHaveBeenCalledWith(url, options);
+    expect(stats().probes).toBe(0);
+  });
+
+  it('caps unique samples but keeps counting all attempts', async () => {
+    start();
+    for (let i = 0; i < 60; i++) {
+      const id = 'a'.repeat(30) + String.fromCharCode(97 + Math.floor(i / 16), 97 + (i % 16));
+      await win.fetch(`chrome-extension://${id}/icon.png`).catch(() => {});
+    }
+    expect(stats().probes).toBe(60);
+    expect(stats().context.extensionIds).toHaveLength(50);
+  });
+
+  it('aborts reused XHRs and fails before native open for blocked requests', () => {
+    start();
+    const xhr = new win.XMLHttpRequest();
+    xhr.open('GET', '/voyager/api/me', false);
+    expect(nativeOpen).toHaveBeenCalledWith('GET', '/voyager/api/me', false);
+    expect(() => xhr.open('GET', new win.URL(probe))).toThrow();
+    expect(xhr.aborted).toBe(true);
+    expect(nativeOpen).toHaveBeenCalledTimes(1);
+    expect(stats().probes).toBe(1);
+  });
+
+  it('filters extension timing entries without inflating blocked request counts', () => {
+    entries = [{ name: probe }, { name: 'moz-extension://123/icon.png' }, { name: 'https://www.linkedin.com/feed/' }];
+    start();
+    expect(win.performance.getEntriesByName(probe)).toEqual([]);
+    expect(win.performance.getEntriesByType('resource')).toEqual([entries[2]]);
+    expect(win.performance.getEntries()).toEqual([entries[2]]);
+    expect(stats().probes).toBe(0);
+  });
+
+  it('is idempotent and also protects LinkedIn child frames', async () => {
+    dom.reconfigure({ windowTop: {} });
+    start();
+    const firstFetch = win.fetch;
+    start();
+    expect(win.fetch).toBe(firstFetch);
+    await expect(win.fetch(probe)).rejects.toThrow();
+    expect(win.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('Surveillance endpoints', () => {
+  it.each(trackerPaths)('blocks fetch, XHR and beacon to %s', async (path) => {
+    start();
+    await expect(win.fetch(new win.URL(path, win.location.href))).rejects.toThrow();
+    expect(() => new win.XMLHttpRequest().open('POST', path)).toThrow();
+    expect(win.navigator.sendBeacon(path, 'private payload')).toBe(false);
+    expect(nativeFetch).not.toHaveBeenCalled();
+    expect(nativeOpen).not.toHaveBeenCalled();
+    expect(nativeBeacon).not.toHaveBeenCalled();
+    expect(stats().trackers).toBe(3);
+  });
+
+  it('blocks HUMAN and merchant fingerprint loaders', async () => {
+    start();
+    await expect(win.fetch('https://li.protechts.net/index_stg.html')).rejects.toThrow();
+    await expect(win.fetch('https://merchantpool1.linkedin.com/mdt.js?session_id=secret')).rejects.toThrow();
+    expect(stats().trackers).toBe(2);
+  });
+
+  it('preserves lookalike hosts, ordinary APIs, authentication, and unrelated beacons', async () => {
+    start();
+    for (const url of [
+      'https://example.com/apfc/collect',
+      'https://linkedin.com.example.com/li/track',
+      'https://example.com/?q=protechts.net',
+      '/voyager/api/me',
+      '/checkpoint/challenge',
+      '/apfc/collector',
+    ]) {
+      await win.fetch(url);
+    }
+    expect(nativeFetch).toHaveBeenCalledTimes(6);
+    expect(win.navigator.sendBeacon('/voyager/api/seen', 'ok')).toBe(true);
+    expect(stats().trackers).toBe(0);
+  });
+
+  it('redacts query values and counts beyond the bounded URL sample', async () => {
+    start();
     for (let i = 0; i < 15; i++) {
-      await fetchProxy(`https://linkedin.com/sensorCollect?v=${i}`);
+      await win.fetch(`https://www.linkedin.com/apfc/collect?session_id=secret-${i}#private`).catch(() => {});
     }
-    expect(blockedUrls).toHaveLength(10);
+    expect(stats().trackers).toBe(15);
+    expect(stats().context.blockedUrls).toEqual(['https://www.linkedin.com/apfc/collect']);
+    expect(JSON.stringify(stats())).not.toContain('secret');
+    expect(JSON.stringify(win.postMessage.mock.calls)).not.toContain('secret');
   });
 
-  it('handles Request objects with url property', async () => {
-    await fetchProxy({ url: 'chrome-extension://reqobj123/manifest.json' });
-    expect(probeCount).toBe(1);
-    expect(probedExtensions).toContain('reqobj123');
+  it('removes existing, nested, and retargeted HUMAN iframes only', async () => {
+    win.document.body.innerHTML = '<iframe src="https://li.protechts.net/index.html"></iframe>';
+    start();
+    expect(win.document.querySelector('iframe')).toBeNull();
+    const wrapper = win.document.createElement('div');
+    wrapper.innerHTML =
+      '<iframe src="https://li.protechts.net/index_stg.html"></iframe><iframe src="https://example.com/?q=protechts.net"></iframe>';
+    win.document.body.append(wrapper);
+    await Promise.resolve();
+    expect(wrapper.querySelectorAll('iframe')).toHaveLength(1);
+    wrapper.querySelector('iframe').src = 'https://li.protechts.net/index.html';
+    await Promise.resolve();
+    expect(wrapper.querySelector('iframe')).toBeNull();
+    expect(stats().context.iframesRemoved).toBe(3);
   });
 });
 
-describe('Content Script — Fingerprint Spoofing', () => {
-  it('spoofs hardwareConcurrency to 4', () => {
-    const nav = {};
-    Object.defineProperty(nav, 'hardwareConcurrency', { get: () => 4 });
-    expect(nav.hardwareConcurrency).toBe(4);
-  });
-
-  it('spoofs deviceMemory to 8', () => {
-    const nav = { deviceMemory: 16 };
-    Object.defineProperty(nav, 'deviceMemory', { get: () => 8 });
-    expect(nav.deviceMemory).toBe(8);
-  });
-
-  it('spoofs getBattery to return full charge', async () => {
-    const fakeBattery = {
-      charging: true,
-      chargingTime: 0,
-      dischargingTime: Infinity,
-      level: 1.0,
-      addEventListener: () => {},
-    };
-    const getBattery = () => Promise.resolve(fakeBattery);
-    const battery = await getBattery();
-    expect(battery.charging).toBe(true);
-    expect(battery.level).toBe(1.0);
-    expect(battery.dischargingTime).toBe(Infinity);
-    expect(battery.chargingTime).toBe(0);
-  });
-});
-
-describe('Content Script — Stats Writing', () => {
-  it('writes correct stats to DOM attribute', () => {
-    const probeCount = 5;
-    const iframesRemoved = 1;
-    const probedExtensions = ['ext1', 'ext2'];
-    const blockedUrls = ['https://linkedin.com/sensorCollect'];
-    const attrs = {};
-
-    function writeStats() {
-      const data = {
-        probes: probeCount,
-        fingerprints: 3,
-        trackers: 2 + iframesRemoved,
-        total: probeCount + 3 + 2 + iframesRemoved,
-        knownScanSize: 6236,
-        context: {
-          extensionIds: probedExtensions,
-          blockedUrls: blockedUrls,
-          fingerprintApis: ['navigator.hardwareConcurrency', 'navigator.deviceMemory', 'navigator.getBattery()'],
-          iframesRemoved: iframesRemoved,
-          detectionMethod: probeCount > 0 ? 'live' : 'research-based',
-        },
-      };
-      attrs['data-linkedin-shield'] = JSON.stringify(data);
+describe('Cookie observations and fingerprints', () => {
+  it('records only allowlisted names, including transient cookie writes, without altering cookies', () => {
+    win.document.cookie = 'df_ts=private-timestamp; path=/';
+    win.document.cookie = 'li_at=private-auth; path=/';
+    start();
+    for (const name of ['li_apfcdc', '_px3', '_pxhd', '_pxvid', 'pxcts']) {
+      win.document.cookie = `${name}=private-value; path=/`;
+      win.document.cookie = `${name}=; Max-Age=0; path=/`;
     }
-
-    writeStats();
-    const stats = JSON.parse(attrs['data-linkedin-shield']);
-
-    expect(stats.probes).toBe(5);
-    expect(stats.fingerprints).toBe(3);
-    expect(stats.trackers).toBe(3); // 2 + 1 iframe
-    expect(stats.total).toBe(11); // 5 + 3 + 2 + 1
-    expect(stats.knownScanSize).toBe(6236);
-    expect(stats.context.detectionMethod).toBe('live');
-    expect(stats.context.extensionIds).toEqual(['ext1', 'ext2']);
-    expect(stats.context.fingerprintApis).toHaveLength(3);
+    expect(stats().context.cookieNames.sort()).toEqual(['_px3', '_pxhd', '_pxvid', 'df_ts', 'li_apfcdc', 'pxcts']);
+    expect(stats().trackers).toBe(0);
+    expect(win.document.cookie).toContain('df_ts=private-timestamp');
+    expect(win.document.cookie).toContain('li_at=private-auth');
+    expect(JSON.stringify(stats())).not.toContain('private');
   });
 
-  it('uses research-based detection when probeCount is 0', () => {
-    const probeCount = 0;
-    const method = probeCount > 0 ? 'live' : 'research-based';
-    expect(method).toBe('research-based');
+  it('reports only successfully installed fingerprint shields', async () => {
+    start();
+    expect(win.navigator.hardwareConcurrency).toBe(4);
+    expect(win.navigator.deviceMemory).toBe(8);
+    expect((await win.navigator.getBattery()).level).toBe(1);
+    expect(stats().fingerprints).toBe(3);
+    expect(stats().total).toBe(3);
   });
 
-  it('calculates total correctly with zero iframes', () => {
-    const probeCount = 10;
-    const iframesRemoved = 0;
-    const total = probeCount + 3 + 2 + iframesRemoved;
-    expect(total).toBe(15);
+  it('does not invent unavailable APIs or tracker activity', () => {
+    delete win.navigator.getBattery;
+    delete win.navigator.deviceMemory;
+    start();
+    expect(stats().fingerprints).toBe(1);
+    expect(stats().trackers).toBe(0);
+    expect(stats().context.detectionMethod).toBe('passive');
+  });
+
+  it('keeps reporting when an existing fingerprint API cannot be replaced', () => {
+    Object.defineProperty(win.navigator, 'getBattery', { writable: false });
+    start();
+    expect(stats().fingerprints).toBe(2);
+    expect(stats().context.fingerprintApis).not.toContain('navigator.getBattery()');
   });
 });

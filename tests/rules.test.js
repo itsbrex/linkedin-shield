@@ -28,9 +28,14 @@ describe('Rules — Structure Validation', () => {
     }
   });
 
-  it('all rules use block action', () => {
+  it('only blocks requests or removes the observed APFC header', () => {
     for (const rule of rules) {
-      expect(rule.action.type).toBe('block');
+      expect(['block', 'modifyHeaders']).toContain(rule.action.type);
+      if (rule.action.type === 'modifyHeaders') {
+        expect(rule.action.requestHeaders).toEqual([{ header: 'X-Li-Apfc-Data', operation: 'remove' }]);
+        expect(rule.condition.requestDomains).toEqual(['linkedin.com']);
+        expect(rule.condition.initiatorDomains).toEqual(['linkedin.com']);
+      }
     }
   });
 
@@ -38,6 +43,37 @@ describe('Rules — Structure Validation', () => {
     const targetDomains = rules.flatMap((r) => r.condition.initiatorDomains || r.condition.requestDomains || []);
     const hasLinkedIn = targetDomains.some((d) => d.includes('linkedin'));
     expect(hasLinkedIn).toBe(true);
+  });
+});
+
+describe('Rules — Captured APFC paths', () => {
+  const capturedRules = rules.filter((rule) => [8, 9, 10, 11].includes(rule.id));
+
+  it.each([
+    'https://www.linkedin.com/platform-telemetry/li/apfcDf',
+    'https://www.linkedin.com/apfc/collect?session=private',
+    'https://www.linkedin.com/li/track',
+    'https://merchantpool1.linkedin.com/mdt.js?session_id=private',
+  ])('matches captured endpoint %s', (url) => {
+    expect(capturedRules.some((rule) => new RegExp(rule.condition.regexFilter).test(url))).toBe(true);
+  });
+
+  it.each([
+    'https://example.com/apfc/collect',
+    'https://linkedin.com.example.com/li/track',
+    'https://www.linkedin.com/apfc/collector',
+    'https://www.linkedin.com/voyager/api/me',
+    'https://www.linkedin.com/checkpoint/challenge',
+    'https://merchantpool1.linkedin.com/mdt.js.map',
+  ])('does not block unrelated URL %s', (url) => {
+    expect(capturedRules.some((rule) => new RegExp(rule.condition.regexFilter).test(url))).toBe(false);
+  });
+
+  it('scopes added blocking and HUMAN rules to LinkedIn initiators', () => {
+    for (const rule of [...capturedRules, rules.find((rule) => rule.id === 3)]) {
+      expect(rule.condition.initiatorDomains).toEqual(['linkedin.com']);
+      expect(rule.condition.requestDomains.length).toBeGreaterThan(0);
+    }
   });
 });
 
