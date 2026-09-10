@@ -20,4 +20,7 @@ jobs:
       - run: npm ci
 
       - name: Verify
-        run: node scripts/verify.mjs
+        run: npm run verify
+
+      - name: Build unpacked extension
+        run: npm run build

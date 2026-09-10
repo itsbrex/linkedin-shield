@@ -39,10 +39,34 @@ Background reading: [BrowserGate investigation](https://www.bleepingcomputer.com
 
 ### From Source (Developer)
 
-1. Clone this repo
-2. Open `chrome://extensions/` → Enable Developer Mode
-3. Click "Load unpacked" → Select the `linkedin-shield` folder
-4. Visit linkedin.com and check the shield badge
+Use Node 24. Clone this repo, enter its directory, then run:
+
+```sh
+npm ci
+npm run build
+```
+
+1. Open `chrome://extensions/` → Enable Developer Mode.
+2. Click "Load unpacked" → Select **`linkedin-shield/dist/`**.
+3. Visit linkedin.com and check the shield badge.
+
+`dist/` contains only the manifest, runtime scripts, popup, rules, four icons,
+and license. Source files are copied unchanged; development tools, tests, docs,
+dependencies, and local files are excluded. The build needs no bundler.
+
+After editing source files, run `npm run build` again, reload the extension from
+the browser's extensions page, then reload LinkedIn. Each build replaces `dist/`
+and removes stale files; make edits in source files, not generated output. If you
+previously loaded the repository root, disable that copy before using `dist/`.
+
+### Development commands
+
+| Command                                 | Purpose                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| `npm run build`                         | Rebuild the unpacked extension in `dist/`                               |
+| `npm run verify`                        | Run tracked-file lint, formatting, runtime syntax checks, and all tests |
+| `npm test -- tests/build.test.js`       | Check package contents and rebuild behavior                             |
+| `npm run lint` / `npm run format:check` | Check the whole source directory, excluding generated builds            |
 
 ### Chrome Web Store
 
@@ -93,7 +117,7 @@ fingerprint surfaces, and DOM-based extension discovery remain coverage gaps.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, contribution standards, evidence
 requirements, tests, browser review, and commit guidance. Use Node 24 and `npm ci`,
-then run `node scripts/verify.mjs` for the same checks used by CI.
+then run `npm run verify` and `npm run build` for the same checks and build used by CI.
 
 ## License
 

@@ -3,3 +3,5 @@ _metadata/
 *.crx
 .DS_Store
 node_modules/
+dist/
+.shield-build-*/

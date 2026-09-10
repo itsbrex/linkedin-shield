@@ -1,7 +1,7 @@
 # Contributing to LinkedIn Shield
 
-LinkedIn Shield is a small Manifest V3 extension with no build step or runtime
-dependencies. Prefer focused changes that improve privacy without disrupting
+LinkedIn Shield is a small Manifest V3 extension with a copy-only build and no
+runtime dependencies. Prefer focused changes that improve privacy without disrupting
 normal browsing. This guide records the repository's existing conventions and
 the validation expected for new contributions.
 
@@ -14,7 +14,8 @@ nvm install
 nvm use
 npm ci
 git switch -c codex/describe-your-change
-node scripts/verify.mjs
+npm run verify
+npm run build
 ```
 
 Use a new feature branch based on the intended base branch, normally `master`.
@@ -22,10 +23,23 @@ Inspect `git status` first and preserve unrelated work. Use the committed npm
 lockfile; do not introduce another package manager's lockfile. `npm ci` installs
 development tools and configures the Husky pre-commit hook.
 
-Load the repository directory as an unpacked extension from your Chromium
-browser's extensions page. After source changes, reload the extension and reload
-the test page. A popup reload alone does not replace an already injected script.
-Development tools are not shipped or loaded by the extension.
+Load `dist/` as an unpacked extension from your Chromium browser's extensions
+page. If you previously loaded the repository root, disable that copy to avoid
+running two instances. After source changes, run `npm run build`, reload the
+extension, and reload the test page. A popup reload alone does not replace an
+already injected script.
+
+The build copies only the explicit runtime-file allowlist in `scripts/build.mjs`,
+including the license. It preserves file contents and paths without transpiling
+or minifying. Development tools, tests, docs, dependencies, and local experiments
+are excluded. `dist/` is ignored by Git, ESLint, and Prettier; every rebuild
+replaces it and removes stale files. Do not edit it by hand. Missing inputs fail
+before the previous build is replaced.
+
+When adding a runtime asset, update the manifest or popup references as needed
+and the build allowlist. `tests/build.test.js` checks the generated package against
+those entry points, verifies byte-for-byte copying, and exercises rebuild/failure
+behavior. Keep paths stable and include only files needed by the extension.
 
 ## Architecture and code style
 
@@ -78,7 +92,8 @@ Run focused tests during development, then the same verifier used by CI:
 
 ```sh
 npm test -- tests/content.test.js tests/rules.test.js
-node scripts/verify.mjs
+npm run verify
+npm run build
 ```
 
 The verifier checks the current working copies of Git-tracked files, including
@@ -87,17 +102,18 @@ tests. It does not rewrite files. Pass each new untracked file explicitly before
 staging it, for example:
 
 ```sh
-node scripts/verify.mjs tests/new-behavior.test.js docs/new-finding.md
+npm run verify -- tests/new-behavior.test.js docs/new-finding.md
 ```
 
 This scope keeps unrelated untracked experiments out of formatting/lint checks;
 the full test suite still runs. `npm run lint` and `npm run format:check` remain
 available for whole-directory checks. Review and stage exact paths; Husky runs
-lint-staged and all tests on commit. Do not bypass failing checks.
+lint-staged (including `.mjs` scripts) and all tests on commit. Generated builds
+are excluded from source checks. Do not bypass failing checks.
 
 ## Browser review
 
-Before release, use a Chromium browser with the changed extension loaded:
+Before release, run `npm run build` and use a Chromium browser with `dist/` loaded:
 
 1. Verify the extension loads without manifest or service-worker errors.
 2. Reload a LinkedIn page and confirm navigation/content still work. If testing

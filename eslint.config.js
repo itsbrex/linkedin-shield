@@ -56,6 +56,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', '_metadata/', '*.zip', '*.crx'],
+    ignores: ['node_modules/', '_metadata/', 'dist/', '.shield-build-*/', '*.zip', '*.crx'],
   },
 ];
