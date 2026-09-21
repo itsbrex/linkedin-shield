@@ -12,6 +12,7 @@
     "package": "node scripts/package.mjs",
     "verify": "node scripts/verify.mjs",
     "test": "vitest run",
+    "test:browser": "node scripts/browser-fixtures.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write '**/*.{js,mjs,json,md,html}'",

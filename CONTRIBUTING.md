@@ -137,6 +137,12 @@ Before release, run `npm run package`, extract the generated ZIP, and load that
 directory in a Chromium browser with other Shield copies disabled. `dist/`
 contains the same production files:
 
+For repeatable synthetic checks, keep `.dev-build/` loaded, run
+`npm run test:browser`, and launch **Browser regression tests** from its popup.
+The [harness guide](dev/README.md#browser-regression-harness) distinguishes real
+rule-engine matching, loopback wire checks, and popup rendering with synthetic
+API data. Record its result separately from the authenticated release review.
+
 1. Verify the extension loads without manifest or service-worker errors.
 2. Reload a LinkedIn page and confirm navigation/content still work. If testing
    an authenticated session, keep credentials inside the browser.

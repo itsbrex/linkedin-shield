@@ -4,11 +4,20 @@ import { watch } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ROOT } from '../scripts/build.mjs';
-import { buildDevelopment, PORT, sourceRevision, WATCH_FILES } from './build.mjs';
+import { buildDevelopment, PORT, sourceRevision, WATCH_FILES, TOOLING_FILES } from './build.mjs';
 
-export async function startDevelopment({ root = ROOT, port = PORT, log = console.log, error = console.error } = {}) {
+export async function startDevelopment({
+  root = ROOT,
+  port = PORT,
+  log = console.log,
+  error = console.error,
+  watchDirectory = watch,
+} = {}) {
   let current;
   let timer;
+  let poll;
+  let toolingRevision;
+  let lastFailure;
   let watchers = [];
   let closed = false;
   const server = createServer((request, response) => {
@@ -58,21 +67,27 @@ export async function startDevelopment({ root = ROOT, port = PORT, log = console
   function rebuild() {
     if (closed) return;
     try {
+      if (sourceRevision(root, TOOLING_FILES) !== toolingRevision) {
+        throw new Error('Build tooling changed; restart npm run dev.');
+      }
       if (sourceRevision(root) === current.revision) return;
       current = buildDevelopment({ root, port });
+      lastFailure = null;
       for (const client of sockets.clients) {
         if (client.readyState === WebSocket.OPEN)
           client.send(JSON.stringify({ type: 'built', revision: current.revision }));
       }
       log('[dev] rebuilt; reload signaled');
     } catch (failure) {
-      error(`[dev] rebuild failed; previous build kept: ${failure.message}`);
+      if (failure.message !== lastFailure) error(`[dev] rebuild failed; previous build kept: ${failure.message}`);
+      lastFailure = failure.message;
     }
   }
 
   function close() {
     closed = true;
     clearTimeout(timer);
+    clearInterval(poll);
     for (const watcher of watchers) watcher.close();
     for (const client of sockets.clients) client.terminate();
     sockets.close();
@@ -85,11 +100,12 @@ export async function startDevelopment({ root = ROOT, port = PORT, log = console
       server.listen(port, '127.0.0.1', done);
     });
     port = server.address().port;
+    toolingRevision = sourceRevision(root, TOOLING_FILES);
     current = buildDevelopment({ root, port });
     const watched = new Set(WATCH_FILES);
     // Watch parent directories so editor atomic-save/rename operations remain visible.
     watchers = [...new Set(WATCH_FILES.map((file) => dirname(file)))].map((directory) => {
-      const watcher = watch(join(root, directory), (_event, filename) => {
+      const watcher = watchDirectory(join(root, directory), (_event, filename) => {
         if (!filename) return;
         const relative = join(directory, String(filename)).split(sep).join('/');
         if (!watched.has(relative)) return;
@@ -99,6 +115,9 @@ export async function startDevelopment({ root = ROOT, port = PORT, log = console
       watcher.on('error', (failure) => error(`[dev] watcher failed: ${failure.message}`));
       return watcher;
     });
+    // Native file notifications can be dropped (including fresh macOS directories).
+    // Hash polling keeps saves reliable without reloading unchanged files.
+    poll = setInterval(rebuild, 1000);
     log(`[dev] load ${current.output} once; watching on 127.0.0.1:${port}`);
     return { close, port, output: current.output };
   } catch (failure) {

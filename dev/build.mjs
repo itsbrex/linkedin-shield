@@ -1,15 +1,23 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExtension, ROOT, RUNTIME_FILES } from '../scripts/build.mjs';
 import { developmentIcon } from './icon.mjs';
 
 export const PORT = 8396;
-export const WATCH_FILES = [...RUNTIME_FILES, 'dev/hot-reload.js'];
+export const DEV_FILES = [
+  'dev/hot-reload.js',
+  'dev/browser-tests.html',
+  'dev/browser-tests.js',
+  'dev/popup-fixture.js',
+  'dev/network-cases.js',
+];
+export const WATCH_FILES = [...RUNTIME_FILES, ...DEV_FILES];
+export const TOOLING_FILES = ['dev/build.mjs', 'dev/icon.mjs', 'scripts/build.mjs'];
 
-export function sourceRevision(root = ROOT) {
+export function sourceRevision(root = ROOT, files = [...WATCH_FILES, ...TOOLING_FILES]) {
   const hash = createHash('sha256');
-  for (const file of [...WATCH_FILES, 'dev/build.mjs', 'dev/icon.mjs', 'scripts/build.mjs']) {
+  for (const file of files) {
     hash.update(file).update(readFileSync(join(root, file)));
   }
   return hash.digest('hex');
@@ -31,13 +39,29 @@ export function buildDevelopment({ root = ROOT, port = PORT } = {}) {
       // Only the worker opens the socket. Keep remote code and eval forbidden.
       manifest.content_security_policy = {
         ...manifest.content_security_policy,
-        extension_pages: `script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:${port} https://api.anthropic.com https://api.openai.com https://*.aliyuncs.com https://api.deepseek.com`,
+        extension_pages: `script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:${port} http://127.0.0.1:8397 https://api.anthropic.com https://api.openai.com https://*.aliyuncs.com https://api.deepseek.com`,
       };
       writeFileSync(join(staging, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
       for (const [size, path] of Object.entries(manifest.icons)) {
         writeFileSync(join(staging, path), developmentIcon(Number(size)));
       }
       mkdirSync(join(staging, 'dev'));
+      for (const file of DEV_FILES) copyFileSync(join(root, file), join(staging, file));
+      const popup = readFileSync(join(staging, 'popup.html'), 'utf8');
+      const fixtures = popup
+        .replace(/<script src="(?:known-extensions|popup)\.js"><\/script>/g, '')
+        .replace('</head>', '<script src="popup-fixture.js"></script></head>');
+      if (fixtures.includes('src="popup.js"') || fixtures.includes('src="known-extensions.js"')) {
+        throw new Error('Popup fixture isolation failed.');
+      }
+      writeFileSync(join(staging, 'dev/popup-fixture.html'), fixtures);
+      writeFileSync(
+        join(staging, 'popup.html'),
+        popup.replace(
+          '</body>',
+          '<p style="padding: 0 18px"><a href="dev/browser-tests.html" target="_blank" rel="noopener">Browser regression tests</a></p></body>',
+        ),
+      );
       const config = { revision, endpoint: `ws://127.0.0.1:${port}/reload` };
       writeFileSync(
         join(staging, 'dev/hot-reload.js'),

@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { unzipSync } from 'fflate';
 import { WebSocket } from 'ws';
 import { buildExtension, ROOT, RUNTIME_FILES } from '../scripts/build.mjs';
-import { buildDevelopment } from '../dev/build.mjs';
+import { buildDevelopment, DEV_FILES } from '../dev/build.mjs';
 import { startDevelopment } from '../dev/server.mjs';
 import { packageExtension } from '../scripts/package.mjs';
 
@@ -24,9 +24,11 @@ let running;
 const read = (file) => readFileSync(join(root, file));
 const json = (file) => JSON.parse(read(file));
 const clients = [];
+// Filesystem events need bounded slack when CI workers contend for CPU.
+const eventually = (read) => expect.poll(read, { timeout: 5000 });
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'shield-dev-test-'));
-  for (const file of [...RUNTIME_FILES, 'dev/hot-reload.js', 'dev/build.mjs', 'dev/icon.mjs', 'scripts/build.mjs']) {
+  for (const file of [...RUNTIME_FILES, ...DEV_FILES, 'dev/build.mjs', 'dev/icon.mjs', 'scripts/build.mjs']) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     copyFileSync(join(ROOT, file), join(root, file));
   }
@@ -61,6 +63,11 @@ describe('Development and release builds', () => {
     expect(read('dist/manifest.json')).toEqual(before);
     expect(read('manifest.json')).toEqual(before);
     expect(read('.dev-build/content.js')).toEqual(read('content.js'));
+    expect(read('.dev-build/popup.html').toString()).toContain('Browser regression tests');
+    expect(read('.dev-build/dev/popup-fixture.html').toString()).toContain('src="popup-fixture.js"');
+    expect(read('.dev-build/dev/popup-fixture.html').toString()).not.toContain('src="popup.js"');
+    expect(read('.dev-build/dev/popup-fixture.html').toString()).not.toContain('src="known-extensions.js"');
+    expect(read('popup.html').toString()).not.toContain('Browser regression tests');
   });
 
   it('creates a repeatable versioned ZIP with only release bytes and a matching checksum', () => {
@@ -73,7 +80,7 @@ describe('Development and release builds', () => {
     const zip = readFileSync(path);
     const entries = unzipSync(zip);
     expect(Object.keys(entries).sort()).toEqual([...RUNTIME_FILES].sort());
-    for (const file of RUNTIME_FILES) expect([...entries[file]]).toEqual([...read(file)]);
+    for (const file of RUNTIME_FILES) expect(read(file).equals(entries[file]), file).toBe(true);
     expect(createHash('sha256').update(zip).digest('hex')).toBe(readFileSync(`${path}.sha256`, 'utf8').split(' ')[0]);
     packageExtension({ root });
     expect(readFileSync(path)).toEqual(zip);
@@ -110,30 +117,36 @@ describe('Development and release builds', () => {
     expect(read('.dev-build/popup.js').toString()).toBe('// saved while offline');
   });
 
-  it('watches atomic saves, ignores unrelated files, and retains a good build after failures', async () => {
+  it('recovers dropped native events, atomic saves, and failed builds through polling', async () => {
     const messages = [];
     const failures = [];
-    running = await startDevelopment({ root, port: 0, log: () => {}, error: (message) => failures.push(message) });
+    running = await startDevelopment({
+      root,
+      port: 0,
+      log: () => {},
+      error: (message) => failures.push(message),
+      watchDirectory: () => ({ on() {}, close() {} }),
+    });
     const origin = `http://127.0.0.1:${running.port}`;
     const socket = new WebSocket(origin.replace('http:', 'ws:') + '/reload', {
       origin: `chrome-extension://${'a'.repeat(32)}`,
     });
     clients.push(socket);
     socket.on('message', (bytes) => messages.push(JSON.parse(bytes)));
-    await expect.poll(() => messages.length).toBe(1);
+    await eventually(() => messages.length).toBe(1);
     const initial = messages[0].revision;
     writeFileSync(join(root, 'private.txt'), 'ignore this');
     writeFileSync(join(root, 'popup.js.tmp'), '// first save');
     renameSync(join(root, 'popup.js.tmp'), join(root, 'popup.js'));
-    await expect.poll(() => read('.dev-build/popup.js').toString()).toBe('// first save');
-    await expect.poll(() => messages.length).toBe(2);
+    await eventually(() => read('.dev-build/popup.js').toString()).toBe('// first save');
+    await eventually(() => messages.length).toBe(2);
     expect(messages[1].revision).not.toBe(initial);
     rmSync(join(root, 'popup.js'));
-    await expect.poll(() => failures.length).toBeGreaterThan(0);
+    await eventually(() => failures.length).toBeGreaterThan(0);
     expect(read('.dev-build/popup.js').toString()).toBe('// first save');
     expect(messages).toHaveLength(2);
     writeFileSync(join(root, 'popup.js'), '// recovered save');
-    await expect.poll(() => messages.length).toBe(3);
+    await eventually(() => messages.length).toBe(3);
     expect(read('.dev-build/popup.js').toString()).toBe('// recovered save');
     const health = await (await fetch(origin + '/health')).json();
     expect(health.clients).toBe(1);
@@ -144,7 +157,7 @@ describe('Development and release builds', () => {
       .poll(async () => (await (await fetch(origin + '/health')).json()).loadedRevisions)
       .toEqual([messages[2].revision]);
     expect((await fetch(origin + '/manifest.json')).status).toBe(404);
-  });
+  }, 15000);
 
   it('rejects web-page socket origins and fails on port conflicts without replacing an installed build', async () => {
     running = await startDevelopment({ root, port: 0, log: () => {} });

@@ -93,3 +93,25 @@ Vite 8.3.0, with their compatible dependency updates.
 Production extension files and permissions are unchanged. npm leaves the
 optional macOS `fsevents` install script unapproved; the repository's watcher
 uses Node's built-in `fs.watch` and does not require that script.
+
+## Browser regression follow-up — 2026-09-20
+
+`npm run test:browser` provides a loopback-only fixture server for the dev build's
+22-check browser suite. The suite exercises installed rule matching, local wire
+blocking and header removal, cleanup, and shipped popup rendering with synthetic
+Chrome API responses. Test assets and launch link are excluded from production
+output. It adds no extension permissions. See the
+[coverage guide](../dev/README.md#browser-regression-harness) for the distinctions
+between those kinds of evidence.
+
+The shared verifier passes **140 tests across 12 files**, including fixture-server
+privacy/report validation and dev-build isolation. A direct filesystem experiment
+observed dropped or delayed native watch events for newly created macOS test
+directories. A one-second source-hash poll now backs up native events, deduplicates
+failure notices, and requires a restart after builder changes. Regression tests
+disable native notifications entirely and verify save, failure, and recovery.
+
+Comet's dev worker acknowledged the updated build. Native Computer Use still
+times out before returning window state. A browser harness run requires its Run
+tests button; a missing or incomplete report exits nonzero rather than counting
+as a pass. Browser execution results will be recorded separately when available.

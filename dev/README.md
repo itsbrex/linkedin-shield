@@ -28,9 +28,13 @@ consumes the marker and refreshes open LinkedIn tabs, replacing scripts that wer
 injected at `document_start`. This is full extension and page reload, not in-place
 module replacement. Unsaved drafts, scroll position, and page state can be lost.
 
-Runtime files from `scripts/build.mjs` and `dev/hot-reload.js` are watched. Parent
+Runtime files from `scripts/build.mjs` and development assets listed in `DEV_FILES`
+in `dev/build.mjs` are watched. Parent
 directories are watched so atomic editor saves still work. Unrelated docs,
 dependencies, generated outputs, and local experiments do not trigger rebuilds.
+One-second hash polling backs up native notifications when the operating system
+drops events. Unchanged content never triggers a reload. Changed build tooling
+produces one restart notice and preserves the previous build.
 Failed builds retain the previous output and send no reload signal. Restart the
 command after editing build/server/icon tooling or changing dependencies.
 
@@ -76,6 +80,48 @@ reload code and development permissions. Extract the ZIP into a separate folder
 and load it unpacked for browser release review; disable the dev copy first.
 Run `shasum -a 256 -c linkedin-shield-<manifest-version>.zip.sha256` from `releases/`
 to verify the archive. Neither command publishes anything.
+
+## Browser regression harness
+
+With `.dev-build/` installed in Comet (or your chosen Chromium browser):
+
+1. Keep `npm run dev` running so the development build is current.
+2. Run `npm run test:browser` in another terminal. It binds a synthetic fixture
+   server to `127.0.0.1:8397` and waits up to three minutes for a full report.
+3. Open the development Shield popup and choose **Browser regression tests**.
+4. Click **Run tests**. The page and terminal report each result. The command
+   exits successfully only when all 22 checks report a pass; missing reports and
+   failures exit nonzero. Restart the command before another run.
+
+The harness has three distinct kinds of evidence:
+
+- **Twelve static-rule checks:** Chrome's `testMatchOutcome` evaluates the
+  installed production rules against hypothetical URLs and initiators, including
+  APFC, HUMAN, host/path boundaries, normal API requests, and challenge pages.
+  These URLs are not fetched. No feedback permission is added.
+- **Four wire checks:** temporary session rules copy the production block and
+  header-removal actions onto exact loopback fixture URLs, limited to this
+  extension's initiator. The server proves control headers arrive, a blocked
+  request never arrives, and `X-Li-Apfc-Data` is removed while a control header
+  survives. Cleanup is checked. These verify actual Chrome action behavior on
+  synthetic traffic, not production traffic interception.
+- **Six popup checks:** generated frames load the shipped HTML, catalog, and
+  popup script in a real browser. Chrome APIs return synthetic fixtures; network
+  calls are forbidden. Checks cover waiting/zero state, sanitized evidence,
+  400px layout, operable disclosures, missing-key guidance, and lookalike hosts.
+  They do not inspect an authenticated user's popup data.
+
+Keep the test page open until completion so its temporary session rules can be
+removed. If reserved IDs 900001/900002 are already in use, the harness fails
+without replacing them. All test URLs have a per-server random path; leftover
+test rules cannot affect LinkedIn or other production traffic. The fixture
+server keeps only synthetic header-presence booleans and reports IDs/pass flags,
+never cookie values, authorization values, or response bodies from websites.
+
+The harness adds assets and a launch link only to `.dev-build/`. Production
+`dist/` and release ZIPs contain no tests or extra permissions. Browser execution
+is opt-in; CI runs fixture-server and build-isolation tests without claiming a
+live browser pass. Complete an authenticated Comet smoke review separately.
 
 ## Validation
 

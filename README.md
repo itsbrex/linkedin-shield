@@ -94,6 +94,10 @@ load that directory unpacked to test the actual release artifact.
 | `npm test -- tests/dev-build.test.js tests/hot-reload.test.js` | Check watch, reload lifecycle, and ZIP isolation                        |
 | `npm run lint` / `npm run format:check`                        | Check the whole source directory, excluding generated builds            |
 
+For browser regressions, run `npm run test:browser`, then choose **Browser
+regression tests** in the development popup. See the
+[harness guide](dev/README.md#browser-regression-harness) for coverage and limits.
+
 ### Chrome Web Store
 
 Coming soon.
