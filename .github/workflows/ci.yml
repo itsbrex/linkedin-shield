@@ -24,3 +24,9 @@ jobs:
 
       - name: Build unpacked extension
         run: npm run build
+
+      - name: Build development extension
+        run: npm run build:dev
+
+      - name: Package release ZIP
+        run: npm run package

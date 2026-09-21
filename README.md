@@ -59,14 +59,40 @@ the browser's extensions page, then reload LinkedIn. Each build replaces `dist/`
 and removes stale files; make edits in source files, not generated output. If you
 previously loaded the repository root, disable that copy before using `dist/`.
 
+### Automatic reload during development
+
+Run `npm run dev` (or `npm run watch`). It creates **`.dev-build/`** and watches
+extension source files. In your browser's extensions page, disable the `dist/`
+copy and load `.dev-build/` once. Look for **[DEV] LinkedIn Shield** with an
+**amber code shield** icon. Keep the command running while editing source files.
+
+On each changed build, the extension reloads automatically, then refreshes open
+LinkedIn tabs so their content scripts update too. **Save drafts first: these are
+full page reloads.** Stop with Ctrl+C; restart the same command to reconnect.
+Development mode requires Chromium 120 or newer and uses a loopback-only reload
+connection. See [dev/README.md](dev/README.md) for ports and troubleshooting.
+
+### Release ZIP
+
+Run `npm run package` to rebuild `dist/` and create
+`releases/linkedin-shield-<manifest-version>.zip` plus a `.zip.sha256` checksum.
+The ZIP contains only production extension files, with `manifest.json` at its
+root. Development branding, reload code, and loopback permissions are excluded.
+Nothing is published or uploaded. Extract the ZIP into a separate directory and
+load that directory unpacked to test the actual release artifact.
+
 ### Development commands
 
-| Command                                 | Purpose                                                                 |
-| --------------------------------------- | ----------------------------------------------------------------------- |
-| `npm run build`                         | Rebuild the unpacked extension in `dist/`                               |
-| `npm run verify`                        | Run tracked-file lint, formatting, runtime syntax checks, and all tests |
-| `npm test -- tests/build.test.js`       | Check package contents and rebuild behavior                             |
-| `npm run lint` / `npm run format:check` | Check the whole source directory, excluding generated builds            |
+| Command                                                        | Purpose                                                                 |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `npm run build`                                                | Rebuild the unpacked extension in `dist/`                               |
+| `npm run build:dev`                                            | Create the branded `.dev-build/` once, without watching                 |
+| `npm run dev` / `npm run watch`                                | Build `.dev-build/`, watch source changes, and reload automatically     |
+| `npm run package`                                              | Rebuild production output and create a versioned ZIP and SHA-256        |
+| `npm run verify`                                               | Run tracked-file lint, formatting, runtime syntax checks, and all tests |
+| `npm test -- tests/build.test.js`                              | Check package contents and rebuild behavior                             |
+| `npm test -- tests/dev-build.test.js tests/hot-reload.test.js` | Check watch, reload lifecycle, and ZIP isolation                        |
+| `npm run lint` / `npm run format:check`                        | Check the whole source directory, excluding generated builds            |
 
 ### Chrome Web Store
 

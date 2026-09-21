@@ -15,7 +15,7 @@ nvm use
 npm ci
 git switch -c codex/describe-your-change
 npm run verify
-npm run build
+npm run dev
 ```
 
 Use a new feature branch based on the intended base branch, normally `master`.
@@ -23,16 +23,23 @@ Inspect `git status` first and preserve unrelated work. Use the committed npm
 lockfile; do not introduce another package manager's lockfile. `npm ci` installs
 development tools and configures the Husky pre-commit hook.
 
-Load `dist/` as an unpacked extension from your Chromium browser's extensions
-page. If you previously loaded the repository root, disable that copy to avoid
-running two instances. After source changes, run `npm run build`, reload the
-extension, and reload the test page. A popup reload alone does not replace an
+For active development, load `.dev-build/` once from your Chromium browser's
+extensions page. It appears as **[DEV] LinkedIn Shield** with an amber icon. Disable
+other copies of LinkedIn Shield. Keep `npm run dev` running; changed runtime files
+trigger a fresh build, extension reload, and then a refresh of open LinkedIn tabs.
+Save drafts before editing because full tab reloads discard unsaved page state.
+`npm run watch` is an alias; `npm run build:dev` builds once without watching.
+See [`dev/README.md`](dev/README.md) for requirements and troubleshooting.
+
+For production parity, run `npm run build` and load `dist/` instead, with the
+development copy disabled. This path requires manually rebuilding, reloading the
+extension, and refreshing the test page. A popup reload alone does not replace an
 already injected script.
 
 The build copies only the explicit runtime-file allowlist in `scripts/build.mjs`,
 including the license. It preserves file contents and paths without transpiling
 or minifying. Development tools, tests, docs, dependencies, and local experiments
-are excluded. `dist/` is ignored by Git, ESLint, and Prettier; every rebuild
+are excluded. Generated outputs are ignored by Git, ESLint, and Prettier; every rebuild
 replaces it and removes stale files. Do not edit it by hand. Missing inputs fail
 before the previous build is replaced.
 
@@ -40,6 +47,17 @@ When adding a runtime asset, update the manifest or popup references as needed
 and the build allowlist. `tests/build.test.js` checks the generated package against
 those entry points, verifies byte-for-byte copying, and exercises rebuild/failure
 behavior. Keep paths stable and include only files needed by the extension.
+
+`npm run package` always rebuilds production output before writing a versioned
+ZIP and SHA-256 file under `releases/`. The filename uses `manifest.json`'s version,
+not the tooling package version. Archive entries use stable timestamps and order
+so repeated builds from unchanged source produce identical bytes. Extract and
+load the ZIP for release review. Packaging does not publish or upload anything.
+
+Development tooling uses pinned `ws` and `fflate` devDependencies for the reload
+transport and ZIP encoding. Neither package ships in the extension. Dev-only
+permissions (`alarms` and loopback access), CSP, branding, and reload client are
+applied to copied output; production source and `dist/` stay unchanged by dev builds.
 
 ## Architecture and code style
 
@@ -94,6 +112,8 @@ Run focused tests during development, then the same verifier used by CI:
 npm test -- tests/content.test.js tests/rules.test.js
 npm run verify
 npm run build
+npm run build:dev
+npm run package
 ```
 
 The verifier checks the current working copies of Git-tracked files, including
@@ -113,7 +133,9 @@ are excluded from source checks. Do not bypass failing checks.
 
 ## Browser review
 
-Before release, run `npm run build` and use a Chromium browser with `dist/` loaded:
+Before release, run `npm run package`, extract the generated ZIP, and load that
+directory in a Chromium browser with other Shield copies disabled. `dist/`
+contains the same production files:
 
 1. Verify the extension loads without manifest or service-worker errors.
 2. Reload a LinkedIn page and confirm navigation/content still work. If testing
@@ -127,6 +149,8 @@ Before release, run `npm run build` and use a Chromium browser with `dist/` load
 Document browser version, whether a logged-in page was tested, and what was
 actually verified. Report unavailable checks plainly; mocked tests do not prove
 browser network-rule behavior. Avoid screenshots containing private page data.
+For reload changes, also exercise the separate development workflow in
+[`dev/README.md`](dev/README.md), including disconnect/reconnect and worker restart.
 
 ## Commits and review
 

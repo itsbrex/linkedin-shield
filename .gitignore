@@ -5,3 +5,5 @@ _metadata/
 node_modules/
 dist/
 .shield-build-*/
+.dev-build/
+releases/

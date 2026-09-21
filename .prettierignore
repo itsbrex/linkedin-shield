@@ -1,2 +1,4 @@
 dist/
 .shield-build-*/
+.dev-build/
+releases/

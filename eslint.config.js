@@ -17,6 +17,7 @@ export default [
         Reflect: 'readonly',
         console: 'readonly',
         setTimeout: 'readonly',
+        clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
         Promise: 'readonly',
@@ -56,6 +57,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', '_metadata/', 'dist/', '.shield-build-*/', '*.zip', '*.crx'],
+    ignores: ['node_modules/', '_metadata/', 'dist/', '.dev-build/', 'releases/', '.shield-build-*/', '*.zip', '*.crx'],
   },
 ];
