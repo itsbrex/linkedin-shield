@@ -78,3 +78,18 @@ page content were not extracted. Complete those UI checks when control reconnect
 
 For installation and manual review steps, see [dev/README.md](../dev/README.md)
 and [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Dependency remediation — 2026-09-20
+
+The follow-up on `codex/development-quality` resolved all eight reported audit
+findings using compatible updates within the existing dependency ranges. No
+forced major upgrade, dependency override, or install-script approval was added.
+The lockfile now selects `@humanfs/node` 0.16.8, Vitest and its mocker 4.1.11,
+`brace-expansion` 5.0.12, `nanoid` 3.3.19, PostCSS 8.5.28, Undici 7.29.1, and
+Vite 8.3.0, with their compatible dependency updates.
+
+`npm audit` reports **zero vulnerabilities**. The shared verifier passes all
+**136 tests**, lint, formatting, and syntax checks with the updated toolchain.
+Production extension files and permissions are unchanged. npm leaves the
+optional macOS `fsevents` install script unapproved; the repository's watcher
+uses Node's built-in `fs.watch` and does not require that script.
