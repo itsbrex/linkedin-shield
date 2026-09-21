@@ -90,6 +90,7 @@ load that directory unpacked to test the actual release artifact.
 | `npm run dev` / `npm run watch`                                | Build `.dev-build/`, watch source changes, and reload automatically     |
 | `npm run package`                                              | Rebuild production output and create a versioned ZIP and SHA-256        |
 | `npm run verify`                                               | Run tracked-file lint, formatting, runtime syntax checks, and all tests |
+| `npm run capture:review -- /path/to/capture.js`                | Generate a static catalog patch and sanitized signal review             |
 | `npm test -- tests/build.test.js`                              | Check package contents and rebuild behavior                             |
 | `npm test -- tests/dev-build.test.js tests/hot-reload.test.js` | Check watch, reload lifecycle, and ZIP isolation                        |
 | `npm run lint` / `npm run format:check`                        | Check the whole source directory, excluding generated builds            |
@@ -97,6 +98,11 @@ load that directory unpacked to test the actual release artifact.
 For browser regressions, run `npm run test:browser`, then choose **Browser
 regression tests** in the development popup. See the
 [harness guide](dev/README.md#browser-regression-harness) for coverage and limits.
+
+For a new captured script, use the [capture review guide](docs/capture-review.md)
+to extract literal probe tables and compare endpoint, cookie, and header
+candidates. Review output stays local; the command does not execute the capture
+or change runtime rules and catalog integrity expectations.
 
 ### Chrome Web Store
 

@@ -57,9 +57,10 @@ one client with an acknowledged revision matching the server's current build.
 These checks prove worker reload and reconnect behavior through the live client.
 
 Comet's native Computer Use entry point, `cua.getApp('ai.perplexity.comet')`,
-repeatedly timed out before returning window state. **Popup rendering,
+repeatedly timed out before returning window state. At that stage, popup rendering,
 authenticated page behavior, actual LinkedIn tab refresh, declarative network
-blocking, and loading the extracted release ZIP remain unverified in Comet.**
+blocking, and loading the extracted release ZIP were unverified in Comet.
+The browser regression follow-up below records subsequent synthetic checks.
 No different browser was substituted. Browser cookies, credentials, and private
 page content were not extracted. Complete those UI checks when control reconnects.
 
@@ -112,6 +113,58 @@ failure notices, and requires a restart after builder changes. Regression tests
 disable native notifications entirely and verify save, failure, and recovery.
 
 Comet's dev worker acknowledged the updated build. Native Computer Use still
-times out before returning window state. A browser harness run requires its Run
-tests button; a missing or incomplete report exits nonzero rather than counting
-as a pass. Browser execution results will be recorded separately when available.
+times out before returning window state. The user ran `npm run test:browser`,
+started the installed development build's suite in Comet, and supplied complete
+terminal output with **all 22 checks passing**: 12 installed rule-matching checks,
+four loopback wire/cleanup checks, and six popup checks. This is user-run Comet
+evidence, not an automated Computer Use run. The first agent-started fixture
+server timed out before execution and was not counted as a pass.
+
+Authenticated LinkedIn page behavior, actual LinkedIn tab refresh, and loading
+the extracted release ZIP remain unverified. Matching hypothetical production
+URLs plus synthetic wire tests does not establish observation of real production
+traffic. No different browser was substituted.
+
+## Static capture review follow-up — 2026-09-20
+
+`npm run capture:review` uses pinned Acorn 8.18.0 to parse a vendor bundle without
+executing it. It writes a local JSON report, Markdown review, and applicable Git
+patch. Existing output paths are refused. The catalog, detection rules, and
+integrity expectations remain unchanged until a maintainer reviews the evidence.
+See the [capture review guide](capture-review.md).
+
+The supplied 2,669,775-byte capture has SHA-256
+`f5bb9da5de585dd9d0f412636e273fbcc0135265c3ad9de0b90043dec73b61c0`.
+The literal `const o` table starts at line 9536, column 450 (the variable name).
+Extraction returns exactly **4,934 pairs**, with sorted-pair SHA-256
+`2b1825e71d31f243283623d96e7d7ac04a281bd91fe8ff01bace34c6de50820b`,
+matching the existing independently calculated integrity fixture. The generated
+catalog patch is empty: no additions, removals, or changed resources.
+
+The report contains **65 static endpoint candidates, seven cookie-name
+candidates, and eight header-name candidates**. These include normal API,
+identity, and CSRF context; classification requires call-site review. No new runtime
+blocking or cookie handling was added from these candidates. A second run
+against the first report produces zero signal deltas. Reports retain source
+locations, strip URL credentials/query/fragment fields, and omit cookie/header
+literal values. Private captures and generated reports are not committed.
+
+Thirty-three new tests cover static extraction without execution, malformed and
+ambiguous tables, Unicode/bracketed paths, duplicate IDs, unsafe paths, signal
+redaction, applicable catalog patches, preserved labels, repeatable reports,
+baseline validation, bounded input, and refusal to overwrite files or symlinks.
+An initial unrestricted parallel run hit three five-second timeouts in the
+catalog, ZIP, and importer suites while other analysis was running. With
+[two test workers](https://vitest.dev/config/maxworkers), all **173 tests across
+13 files** passed. The shared configuration now uses that worker limit; existing
+assertions and timeouts were not weakened. `npm ci` succeeds with the updated
+lockfile, and `npm audit` still reports **zero vulnerabilities**.
+
+The full shared verifier then passed with the committed worker configuration:
+173 tests, ESLint, Prettier, and runtime syntax checks. `npm run build`,
+`npm run build:dev`, and `npm run package` succeeded. An independent Python ZIP
+check confirmed 13 entries, matching source/dist bytes, and the same production
+archive SHA-256 as before these development-tool changes:
+`4fd7ef6e7abbdccd4c57a98b1b3f0c83e5d8636b3728b131cabc4d877496d6a6`.
+The live dev watcher still reports a connected client acknowledging its current
+build revision. No private capture, review output, or plan-viewer WIP is staged.

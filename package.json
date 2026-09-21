@@ -13,6 +13,7 @@
     "verify": "node scripts/verify.mjs",
     "test": "vitest run",
     "test:browser": "node scripts/browser-fixtures.mjs",
+    "capture:review": "node scripts/capture-review.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write '**/*.{js,mjs,json,md,html}'",
@@ -41,6 +42,7 @@
   "homepage": "https://github.com/Quality-Max/linkedin-shield#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "acorn": "8.18.0",
     "eslint": "^10.2.0",
     "fflate": "0.8.3",
     "husky": "^9.1.7",

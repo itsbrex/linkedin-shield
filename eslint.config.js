@@ -57,6 +57,17 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', '_metadata/', 'dist/', '.dev-build/', 'releases/', '.shield-build-*/', '*.zip', '*.crx'],
+    ignores: [
+      'node_modules/',
+      '_metadata/',
+      'dist/',
+      '.dev-build/',
+      'releases/',
+      '.shield-build-*/',
+      '.capture-reviews/',
+      '.capture-review-*/',
+      '*.zip',
+      '*.crx',
+    ],
   },
 ];

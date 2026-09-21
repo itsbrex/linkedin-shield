@@ -55,7 +55,8 @@ so repeated builds from unchanged source produce identical bytes. Extract and
 load the ZIP for release review. Packaging does not publish or upload anything.
 
 Development tooling uses pinned `ws` and `fflate` devDependencies for the reload
-transport and ZIP encoding. Neither package ships in the extension. Dev-only
+transport and ZIP encoding, plus pinned `acorn` for static capture parsing. These
+packages do not ship in the extension. Dev-only
 permissions (`alarms` and loopback access), CSP, branding, and reload client are
 applied to copied output; production source and `dist/` stay unchanged by dev builds.
 
@@ -85,6 +86,13 @@ method, and uncertainty in a focused document such as
 Preserve captured extension IDs and relative resource paths exactly. Validate ID
 syntax and duplicates; do not guess product names or infer installation from a
 probe target. Separate static source capability from observed live behavior.
+
+Use `npm run capture:review -- /path/to/capture.js` to produce a reviewable
+catalog patch, provenance hashes, and sanitized signal candidates. Compare with
+a prior report using `--baseline`; without one, candidates are not claimed as new.
+The importer never executes the capture or updates detection rules or integrity
+expectations. Independently verify any replacement table before applying its
+patch. See the [capture review guide](docs/capture-review.md).
 
 Use host and path boundaries for endpoint rules, with positive and negative
 fixtures. Keep authentication, challenge flows, and ordinary product requests
@@ -118,7 +126,11 @@ npm run package
 
 The verifier checks the current working copies of Git-tracked files, including
 new staged files. It runs ESLint, Prettier, runtime syntax checks, and all Vitest
-tests. It does not rewrite files. Pass each new untracked file explicitly before
+tests. `vitest.config.js` limits test workers to two so DOM, catalog, and filesystem
+suites do not contend for every available core on a busy desktop. Assertions and
+test timeouts are unchanged. The verifier does not rewrite files.
+
+Pass each new untracked file explicitly before
 staging it, for example:
 
 ```sh

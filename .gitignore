@@ -7,3 +7,5 @@ dist/
 .shield-build-*/
 .dev-build/
 releases/
+.capture-reviews/
+.capture-review-*/
