@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { realpathSync, watch } from 'node:fs';
+import { watch } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ROOT } from '../scripts/build.mjs';
 import { buildDevelopment, PORT, sourceRevision, WATCH_FILES } from './build.mjs';
@@ -108,7 +107,7 @@ export async function startDevelopment({ root = ROOT, port = PORT, log = console
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+if (import.meta.main) {
   startDevelopment({ port: Number(process.env.SHIELD_DEV_PORT || PORT) }).then(
     (server) => {
       for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close());

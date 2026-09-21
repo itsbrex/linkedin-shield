@@ -13,7 +13,7 @@ import {
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,6 +65,18 @@ beforeEach(() => {
 afterEach(() => rmSync(fixture, { recursive: true, force: true }));
 
 describe('Unpacked extension build', () => {
+  it('can be imported from stdin without running the CLI or resolving stdin as a file', () => {
+    const url = pathToFileURL(join(fixture, 'scripts/build.mjs')).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-'], {
+      cwd: tmpdir(),
+      input: `const { buildExtension } = await import(${JSON.stringify(url)}); console.log(typeof buildExtension);`,
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('function');
+    expect(existsSync(join(fixture, 'dist'))).toBe(false);
+  });
+
   it('includes every runtime reference byte-for-byte and excludes unrelated files', () => {
     for (const file of [
       '.env',

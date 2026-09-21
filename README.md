@@ -39,7 +39,7 @@ Background reading: [BrowserGate investigation](https://www.bleepingcomputer.com
 
 ### From Source (Developer)
 
-Use Node 24. Clone this repo, enter its directory, then run:
+Use Node 24 LTS (24.2 or newer). Clone this repo, enter its directory, then run:
 
 ```sh
 npm ci

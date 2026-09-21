@@ -7,7 +7,7 @@ the validation expected for new contributions.
 
 ## Development setup
 
-Use Git, Node.js 24 (see `.nvmrc`), and npm. If you use nvm:
+Use Git, Node.js 24 LTS (24.2 or newer; see `.nvmrc`), and npm. If you use nvm:
 
 ```sh
 nvm install

@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { buildExtension, ROOT, RUNTIME_FILES } from '../scripts/build.mjs';
 import { developmentIcon } from './icon.mjs';
 
@@ -51,7 +50,7 @@ export function buildDevelopment({ root = ROOT, port = PORT } = {}) {
   return { output, revision };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+if (import.meta.main) {
   try {
     console.log(`Built [DEV] LinkedIn Shield in ${buildDevelopment().output}`);
   } catch (error) {

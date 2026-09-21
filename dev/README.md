@@ -1,6 +1,6 @@
 # Development build and automatic reload
 
-Use Node 24, `npm ci`, and Chromium 120 or newer. Source stays at the repository
+Use Node 24 LTS (24.2 or newer), `npm ci`, and Chromium 120 or newer. Source stays at the repository
 root; generated builds contain only extension assets.
 
 ## Install once

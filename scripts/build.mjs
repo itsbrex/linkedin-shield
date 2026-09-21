@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /** Copy only the extension's runtime assets into a loadable dist directory. */
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Keep this allowlist in sync with manifest and popup references. Never copy the
@@ -51,7 +51,7 @@ export function buildExtension({ root = ROOT, outputName = 'dist', prepare = () 
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+if (import.meta.main) {
   try {
     console.log(`Built ${RUNTIME_FILES.length} extension files in ${buildExtension()}`);
   } catch (error) {

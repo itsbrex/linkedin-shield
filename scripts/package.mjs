@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { zipSync } from 'fflate';
 import { buildExtension, ROOT, RUNTIME_FILES } from './build.mjs';
 
@@ -36,7 +35,7 @@ export function packageExtension({ root = ROOT } = {}) {
   return join(releaseDir, filename);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+if (import.meta.main) {
   try {
     console.log(`Packaged ${packageExtension()}`);
   } catch (error) {
