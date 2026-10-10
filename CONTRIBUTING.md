@@ -18,7 +18,7 @@ npm run verify
 npm run dev
 ```
 
-Use a new feature branch based on the intended base branch, normally `master`.
+Use a new feature branch based on the intended base branch, normally `main`.
 Inspect `git status` first and preserve unrelated work. Use the committed npm
 lockfile; do not introduce another package manager's lockfile. `npm ci` installs
 development tools and configures the Husky pre-commit hook.
