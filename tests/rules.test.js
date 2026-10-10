@@ -77,6 +77,35 @@ describe('Rules — Captured APFC paths', () => {
   });
 });
 
+describe('Rules — Captured exception telemetry', () => {
+  const rule = rules.find((entry) => entry.id === 13);
+
+  it('blocks only the observed origin and case-sensitive path for background requests', () => {
+    expect(rule).toBeDefined();
+    expect(rule.action.type).toBe('block');
+    expect(rule.condition.initiatorDomains).toEqual(['linkedin.com']);
+    expect(rule.condition.requestDomains).toEqual(['www.linkedin.com']);
+    expect(rule.condition.resourceTypes).toEqual(['xmlhttprequest', 'ping', 'other']);
+    expect(rule.condition.isUrlFilterCaseSensitive).toBe(true);
+    const pattern = new RegExp(rule.condition.regexFilter);
+    for (const suffix of ['', '?batch=synthetic']) {
+      expect(pattern.test('https://www.linkedin.com/to11ysim2l0rlGBsG' + suffix)).toBe(true);
+    }
+    for (const url of [
+      'https://example.com/to11ysim2l0rlGBsG',
+      'https://www.linkedin.com.example.com/to11ysim2l0rlGBsG',
+      'https://linkedin.com/to11ysim2l0rlGBsG',
+      'https://www.linkedin.com:8443/to11ysim2l0rlGBsG',
+      'https://www.linkedin.com/to11ysim2l0rlGBsG-extra',
+      'https://www.linkedin.com/to11ysim2l0rlGBsG/other',
+      'https://www.linkedin.com/to11ysim2l0rlgbsg',
+      'https://www.linkedin.com/voyager/api/me?next=/to11ysim2l0rlGBsG',
+      'https://www.linkedin.com/checkpoint/challenge',
+    ])
+      expect(pattern.test(url)).toBe(false);
+  });
+});
+
 describe('Rules — Surveillance Endpoints', () => {
   it('blocks sensorCollect endpoint', () => {
     const sensorRule = rules.find(

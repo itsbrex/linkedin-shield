@@ -3,6 +3,18 @@ export const networkCases = [
   { id: 'apfc-path', url: 'https://www.linkedin.com/apfc/collect', rule: 9 },
   { id: 'telemetry-path', url: 'https://www.linkedin.com/platform-telemetry/li/apfcDf', rule: 8 },
   { id: 'track-path', url: 'https://www.linkedin.com/li/track', rule: 11 },
+  { id: 'otel-path', url: 'https://www.linkedin.com/to11ysim2l0rlGBsG', rule: 13 },
+  { id: 'otel-beacon', url: 'https://www.linkedin.com/to11ysim2l0rlGBsG?batch=synthetic', rule: 13, type: 'ping' },
+  { id: 'otel-case-boundary', url: 'https://www.linkedin.com/to11ysim2l0rlgbsg', block: false },
+  { id: 'otel-path-boundary', url: 'https://www.linkedin.com/to11ysim2l0rlGBsG/other', block: false },
+  { id: 'otel-host-boundary', url: 'https://www.linkedin.com.example.com/to11ysim2l0rlGBsG', block: false },
+  {
+    id: 'otel-foreign-initiator',
+    url: 'https://www.linkedin.com/to11ysim2l0rlGBsG',
+    initiator: 'https://example.com/',
+    block: false,
+  },
+  { id: 'otel-navigation', url: 'https://www.linkedin.com/to11ysim2l0rlGBsG', type: 'main_frame', block: false },
   { id: 'merchant-script', url: 'https://merchantpool1.linkedin.com/mdt.js', rule: 10, type: 'script' },
   { id: 'human-domain', url: 'https://collector.protechts.net/synthetic', rule: 3 },
   { id: 'sensor-path', url: 'https://www.linkedin.com/sensorCollect', rule: 2 },
@@ -22,6 +34,8 @@ export const networkCases = [
 
 export const browserCheckIds = [
   ...networkCases.map(({ id }) => id),
+  'errors-fetch',
+  'errors-xhr',
   'wire-control',
   'wire-block',
   'wire-header-removal',

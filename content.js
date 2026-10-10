@@ -68,6 +68,8 @@
     if (!url || !['http:', 'https:'].includes(url.protocol)) return false;
     if (isDomain(url.hostname, 'protechts.net')) return true;
     if (url.hostname === 'merchantpool1.linkedin.com' && url.pathname === '/mdt.js') return true;
+    // Observed OtelPilotClientTraceEvent transport; do not generalize opaque paths.
+    if (url.origin === 'https://www.linkedin.com' && url.pathname === '/to11ysim2l0rlGBsG') return true;
     return (
       isDomain(url.hostname, 'linkedin.com') &&
       /^\/(?:platform-telemetry\/li\/apfcDf|apfc\/collect|li\/track|(?:li\/)?sensorCollect|spectroscopy|browser-id|fingerprintjs)(?:\/|$)/i.test(
@@ -96,10 +98,22 @@
 
   // A fulfilled 404 is an installed-extension signal to the captured scanner.
   // Match fetch's network-failure contract instead, including URL and Request input.
+  function withoutStack(error) {
+    // Page telemetry can collect errors, including other extensions in the call chain.
+    // Replace the entire stack without reading it or changing native error prototypes.
+    Object.defineProperty(error, 'stack', {
+      value: `${error.name}: ${error.message}`,
+      configurable: true,
+      writable: true,
+      enumerable: false,
+    });
+    return error;
+  }
+
   const nativeFetch = window.fetch;
   const fetchProxy = new Proxy(nativeFetch, {
     apply(target, thisArg, args) {
-      if (shouldBlock(args[0])) return Promise.reject(new TypeError('Failed to fetch'));
+      if (shouldBlock(args[0])) return Promise.reject(withoutStack(new TypeError('Failed to fetch')));
       return Reflect.apply(target, thisArg, args);
     },
   });
@@ -110,7 +124,7 @@
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     if (shouldBlock(url)) {
       this.abort();
-      throw new window.DOMException('Blocked by LinkedIn Shield', 'NetworkError');
+      throw withoutStack(new window.DOMException('A network error occurred.', 'NetworkError'));
     }
     return nativeXHROpen.call(this, method, url, ...rest);
   };

@@ -60,6 +60,36 @@ button.addEventListener('click', async () => {
             assert(!matched.some((id) => blockers.has(id)), 'Ordinary request would be blocked.');
           if (test.header !== undefined) assert(matched.includes(12) === test.header, 'Header rule scope differs.');
         });
+      // Exercise the shipped hooks in this synthetic extension page, where errors
+      // naturally carry chrome-extension URLs unless sanitized before exposure.
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '../content.js';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Could not load content.js for error privacy checks.'));
+        document.head.appendChild(script);
+      });
+      const probe = 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/synthetic-probe';
+      const exposesExtension = (error) =>
+        /chrome-extension:|moz-extension:|LinkedIn Shield/.test(
+          JSON.stringify({ name: error.name, message: error.message, stack: error.stack }),
+        );
+      await check('errors-fetch', async () => {
+        const [result] = await Promise.allSettled([fetch(probe)]);
+        assert(result.status === 'rejected' && result.reason instanceof TypeError, 'Fetch did not reject.');
+        assert(result.reason.message === 'Failed to fetch', 'Fetch error contract changed.');
+        assert(!exposesExtension(result.reason), 'Fetch exception exposes an extension.');
+      });
+      await check('errors-xhr', async () => {
+        let failure;
+        try {
+          new XMLHttpRequest().open('GET', probe);
+        } catch (error) {
+          failure = error;
+        }
+        assert(failure instanceof window.DOMException && failure.name === 'NetworkError', 'XHR did not fail.');
+        assert(!exposesExtension(failure), 'XHR exception exposes an extension.');
+      });
       const response = await fetch('http://127.0.0.1:8397/session', { credentials: 'omit' });
       assert(response.ok, 'Start npm run test:browser first.');
       const { base } = await response.json();

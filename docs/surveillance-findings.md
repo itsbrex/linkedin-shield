@@ -164,6 +164,76 @@ AI requests, captured sample size, cookie-name observations, and coverage gaps.
   to verify authenticated browsing, actual network rules, and popup rendering.
   No logged-in browser validation or remote CI result is claimed.
 
+## Exception telemetry disclosure (2026-09-25)
+
+A user-supplied request to `https://www.linkedin.com/to11ysim2l0rlGBsG`
+contained an `OtelPilotClientTraceEvent`. Offline base64 decoding reproduced the
+supplied JSON exactly. Its `exception.stacktrace` included Shield's `content.js`
+fetch proxy and another extension's `native-save-bridge.js`, including both
+extension IDs. Authentication cookies accompanied the request, so `memberId: 0`
+does not establish anonymity. Private request data and identifiers are not copied
+into this repository; the captured request was never replayed.
+
+The immediate source was the `TypeError` created by Shield when rejecting a
+blocked fetch. Its JavaScript stack was page-readable. The XHR block also exposed
+an extension URL and the explicit message `Blocked by LinkedIn Shield`.
+
+Shield-generated failures now retain their `TypeError` / `NetworkError` contracts
+with neutral messages and a stack containing only the error name and message.
+The stack is replaced without reading it, removing all caller frames rather than
+only Shield's frame. Native errors from allowed requests remain unchanged; global
+error constructors and prototypes are not modified.
+
+Rule 13 and the page hooks block the exact observed HTTPS origin and case-sensitive
+path, including its query string. The network rule covers XHR/fetch, beacon and
+other background requests initiated by LinkedIn. Similar paths, unrelated hosts,
+nonstandard ports, normal APIs, challenge pages and top-level navigation remain
+outside this rule. Blocking this transport can suppress ordinary analytics sent
+through the same endpoint. No generic opaque-path block or request-body inspection
+was added. A direct read of the referenced public metrics bundle returned HTTP
+403, so endpoint rotation and other uses were not established from that source.
+
+This closes the observed Shield-generated exception channel, not every way to
+detect an extension. A renamed telemetry endpoint, errors independently created by
+other extensions, page-visible Shield markers, and intentional hook inspection
+remain coverage limits. Browser verification must distinguish synthetic Chrome
+rule/error checks from fresh authenticated network observations.
+
+Regression tests first reproduced both exception leaks and the unblocked captured
+endpoint. Updated tests cover rejection semantics, second-extension caller frames,
+native error preservation, all three hooked transports, and URL boundaries. The
+installed-browser harness adds seven real rule-engine cases and two error-privacy
+checks using the shipped script without sending captured data.
+
+References: [V8 stack traces](https://v8.dev/docs/stack-trace-api),
+[Chrome declarativeNetRequest](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest).
+
+### Verification for this change
+
+- `npm run verify` passed in the original workspace: ESLint, formatting, syntax,
+  and 188 tests across 13 files. The isolated checkout also passed its verifier;
+  the original workspace retains a pre-existing additional fixture regression.
+- BrowserOS JP / Chrome 151.0.8162.137 ran the installed development extension:
+  **31/31 browser checks passed**, including rule 13 URL boundaries, fetch/XHR
+  exception privacy, loopback wire blocks/header removal/cleanup, and popup checks.
+- A fresh authenticated `/feed/` tab was observed for 30 seconds via CDP. Across
+  158 HTTP(S) requests and all four available request bodies, no extension schemes
+  or either captured extension ID were found in the inspected URLs/bodies. No body
+  was missing, oversized, or opaque. Fifteen product requests received 2xx responses.
+  Direct synthetic extension probes in that tab produced neutral `TypeError` and
+  `NetworkError` values with no extension identity in their exception fields.
+- The captured telemetry route did not occur during that observation, so this is
+  not evidence of its live server-side receipt or retention. Its blocking was
+  checked independently with Chrome's installed rule engine. Separate workers and
+  out-of-process frames were outside the network capture. Comet / Chrome 152 was
+  not used for this live check.
+- The development server reported three clients acknowledging the new revision;
+  generated runtime files matched source. This acknowledgment alone is not a
+  browser privacy test. Unrelated modified files retained their original hashes.
+- The capture retained aggregate results only. No cookies, request bodies, private
+  page content, or vendor bundle were added to the repository. CDP network
+  observation was disabled and its session detached after the check.
+
 ## Ranked follow-up opportunities
 
 1. Add a reproducible, data-only capture importer that previews catalog and

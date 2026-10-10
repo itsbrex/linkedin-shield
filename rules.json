@@ -115,6 +115,20 @@
     }
   },
   {
+    "id": 13,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "regexFilter": "^https://www\\.linkedin\\.com/to11ysim2l0rlGBsG(\\?|$)",
+      "initiatorDomains": ["linkedin.com"],
+      "requestDomains": ["www.linkedin.com"],
+      "resourceTypes": ["xmlhttprequest", "ping", "other"],
+      "isUrlFilterCaseSensitive": true
+    }
+  },
+  {
     "id": 12,
     "priority": 1,
     "action": {

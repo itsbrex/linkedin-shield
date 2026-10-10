@@ -5,11 +5,18 @@ import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../content.js', import.meta.url), 'utf8');
 const probe = 'chrome-extension://aaaeoelkococjpgngfokhbkkfiiegolp/icon/16.png';
-const trackerPaths = ['/platform-telemetry/li/apfcDf', '/apfc/collect', '/li/track', '/sensorCollect'];
+const trackerPaths = [
+  '/platform-telemetry/li/apfcDf',
+  '/apfc/collect',
+  '/li/track',
+  '/sensorCollect',
+  '/to11ysim2l0rlGBsG',
+  '/to11ysim2l0rlGBsG?batch=synthetic',
+];
 let dom, win, nativeFetch, nativeOpen, nativeBeacon, timers, entries;
 
 function start() {
-  win.eval(source);
+  win.eval(source + '\n//# sourceURL=chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/content.js');
 }
 function stats() {
   for (const callback of timers) callback();
@@ -52,6 +59,54 @@ beforeEach(() => {
   win.performance.getEntriesByName = vi.fn((name) => entries.filter((entry) => entry.name === String(name)));
 });
 afterEach(() => dom.window.close());
+
+describe('Blocked error privacy', () => {
+  it('rejects with a TypeError without exposing any extension in collected exception fields', async () => {
+    start();
+    win.eval(`
+      const wrappedFetch = window.fetch;
+      window.fetch = function (...args) { return wrappedFetch(...args); };
+      //# sourceURL=chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/native-save-bridge.js
+    `);
+    const [{ status, reason }] = await Promise.allSettled([win.fetch(probe)]);
+    expect(status).toBe('rejected');
+    expect(reason).toBeInstanceOf(win.TypeError);
+    expect(reason.message).toBe('Failed to fetch');
+    const telemetry = JSON.stringify({ name: reason.name, message: reason.message, stack: reason.stack });
+    expect(telemetry).not.toMatch(/chrome-extension:|moz-extension:|LinkedIn Shield|content\.js|native-save-bridge/);
+    expect(nativeFetch).not.toHaveBeenCalled();
+  });
+
+  it('throws a neutral XHR NetworkError without exposing extension names or locations', () => {
+    start();
+    const xhr = new win.XMLHttpRequest();
+    let failure;
+    try {
+      xhr.open('POST', probe);
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(win.DOMException);
+    expect(failure.name).toBe('NetworkError');
+    const telemetry = JSON.stringify({ message: String(failure), stack: failure.stack });
+    expect(telemetry).not.toMatch(/chrome-extension:|moz-extension:|LinkedIn Shield|content\.js/);
+    expect(xhr.aborted).toBe(true);
+    expect(nativeOpen).not.toHaveBeenCalled();
+  });
+
+  it('preserves native errors from allowed requests, including their diagnostic stacks', async () => {
+    const failure = new win.TypeError('Native failure');
+    const stack = failure.stack;
+    nativeFetch.mockRejectedValueOnce(failure);
+    nativeOpen.mockImplementationOnce(() => {
+      throw failure;
+    });
+    start();
+    await expect(win.fetch('/voyager/api/me')).rejects.toBe(failure);
+    expect(() => new win.XMLHttpRequest().open('GET', '/voyager/api/me')).toThrow(failure);
+    expect(failure.stack).toBe(stack);
+  });
+});
 
 describe('Extension probe protection', () => {
   it('rejects inaccessible extensions instead of fulfilling with HTTP 404', async () => {
@@ -136,6 +191,26 @@ describe('Extension probe protection', () => {
 });
 
 describe('Surveillance endpoints', () => {
+  it.each([
+    'https://example.com/to11ysim2l0rlGBsG',
+    'https://www.linkedin.com.example.com/to11ysim2l0rlGBsG',
+    'https://linkedin.com/to11ysim2l0rlGBsG',
+    'https://www.linkedin.com:8443/to11ysim2l0rlGBsG',
+    '/to11ysim2l0rlGBsG-extra',
+    '/to11ysim2l0rlGBsG/other',
+    '/to11ysim2l0rlgbsg',
+    '/voyager/api/me?next=/to11ysim2l0rlGBsG',
+  ])('preserves requests outside the observed telemetry origin and path: %s', async (url) => {
+    start();
+    await win.fetch(url);
+    new win.XMLHttpRequest().open('POST', url);
+    expect(win.navigator.sendBeacon(url, 'synthetic')).toBe(true);
+    expect(nativeFetch).toHaveBeenCalledWith(url);
+    expect(nativeOpen).toHaveBeenCalledWith('POST', url);
+    expect(nativeBeacon).toHaveBeenCalledWith(url, 'synthetic');
+    expect(stats().trackers).toBe(0);
+  });
+
   it.each(trackerPaths)('blocks fetch, XHR and beacon to %s', async (path) => {
     start();
     await expect(win.fetch(new win.URL(path, win.location.href))).rejects.toThrow();

@@ -113,15 +113,20 @@ With `.dev-build/` installed in Comet (or your chosen Chromium browser):
    server to `127.0.0.1:8397` and waits up to three minutes for a full report.
 3. Open the development Shield popup and choose **Browser regression tests**.
 4. Click **Run tests**. The page and terminal report each result. The command
-   exits successfully only when all 22 checks report a pass; missing reports and
+   exits successfully only when all 31 checks report a pass; missing reports and
    failures exit nonzero. Restart the command before another run.
 
 The harness has three distinct kinds of evidence:
 
-- **Twelve static-rule checks:** Chrome's `testMatchOutcome` evaluates the
+- **Nineteen static-rule checks:** Chrome's `testMatchOutcome` evaluates the
   installed production rules against hypothetical URLs and initiators, including
-  APFC, HUMAN, host/path boundaries, normal API requests, and challenge pages.
+  APFC, HUMAN, the observed exception-telemetry route, host/path/case boundaries,
+  normal API requests, and challenge pages.
   These URLs are not fetched. No feedback permission is added.
+- **Two error-privacy checks:** the shipped content script runs in the synthetic
+  extension test page. Blocked fetch and XHR calls must preserve their failure
+  types without exposing extension names or URLs in exception fields. These do
+  not establish authenticated-page behavior or hide errors created by other code.
 - **Four wire checks:** temporary session rules copy the production block and
   header-removal actions onto exact loopback fixture URLs, limited to this
   extension's initiator. The server proves control headers arrive, a blocked
