@@ -58,6 +58,7 @@ export default [
   },
   {
     ignores: [
+      '.worktrees/',
       'node_modules/',
       '_metadata/',
       'dist/',

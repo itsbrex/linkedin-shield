@@ -23,6 +23,10 @@ Inspect `git status` first and preserve unrelated work. Use the committed npm
 lockfile; do not introduce another package manager's lockfile. `npm ci` installs
 development tools and configures the Husky pre-commit hook.
 
+Keep additional local checkouts in `.worktrees/` and list them in the local
+`WORKTREES.md` index. Both paths stay outside Git. Test discovery, ESLint, and
+Prettier exclude nested worktrees so another checkout cannot affect root checks.
+
 For active development, load `.dev-build/` once from your Chromium browser's
 extensions page. It appears as **[DEV] LinkedIn Shield** with an amber icon. Disable
 other copies of LinkedIn Shield. Keep `npm run dev` running; changed runtime files

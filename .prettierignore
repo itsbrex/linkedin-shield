@@ -1,3 +1,5 @@
+.worktrees/
+WORKTREES.md
 dist/
 .shield-build-*/
 .dev-build/
