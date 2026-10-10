@@ -4,7 +4,7 @@ import { watch } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ROOT } from '../scripts/build.mjs';
-import { buildDevelopment, PORT, sourceRevision, WATCH_FILES, TOOLING_FILES } from './build.mjs';
+import { buildDevelopment, extensionOrigin, PORT, sourceRevision, WATCH_FILES, TOOLING_FILES } from './build.mjs';
 
 export async function startDevelopment({
   root = ROOT,
@@ -20,7 +20,19 @@ export async function startDevelopment({
   let lastFailure;
   let watchers = [];
   let closed = false;
+  // Only the development build of this checkout may connect.
+  const origin = extensionOrigin(root);
   const server = createServer((request, response) => {
+    if (request.method === 'GET' && request.url === '/grant' && request.headers.host === `127.0.0.1:${port}`) {
+      // dev/dev-connect.html fetches this to trigger the browser's Local Network
+      // Access prompt; CORS lets that page read the answer.
+      const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+      if (request.headers.origin === origin) headers['Access-Control-Allow-Origin'] = origin;
+      response.writeHead(200, headers);
+      response.end(JSON.stringify({ clients: sockets.clients.size }));
+      log('[dev] local network access granted (dev-connect page reached the server)');
+      return;
+    }
     if (request.method !== 'GET' || request.url !== '/health' || request.headers.host !== `127.0.0.1:${port}`) {
       response.writeHead(404).end();
       return;
@@ -40,7 +52,7 @@ export async function startDevelopment({
     if (
       request.url !== '/reload' ||
       request.headers.host !== `127.0.0.1:${port}` ||
-      !/^chrome-extension:\/\/[a-p]{32}$/.test(request.headers.origin || '')
+      request.headers.origin !== origin
     ) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       return;
@@ -58,10 +70,10 @@ export async function startDevelopment({
       }
       if (message?.type !== 'ready' || !/^[a-f0-9]{64}$/.test(message.revision)) return;
       client.revision = message.revision;
-      log(`[dev] extension running ${message.revision.slice(0, 12)}`);
+      log(`[dev] extension connected, running build ${message.revision.slice(0, 12)}`);
     });
+    client.on('close', () => log('[dev] extension disconnected'));
     client.send(JSON.stringify({ type: 'built', revision: current.revision }));
-    log('[dev] extension connected');
   });
 
   function rebuild() {

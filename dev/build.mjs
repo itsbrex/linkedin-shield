@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExtension, ROOT, RUNTIME_FILES } from '../scripts/build.mjs';
 import { developmentIcon } from './icon.mjs';
@@ -7,6 +7,8 @@ import { developmentIcon } from './icon.mjs';
 export const PORT = 8396;
 export const DEV_FILES = [
   'dev/hot-reload.js',
+  'dev/dev-connect.html',
+  'dev/dev-connect.js',
   'dev/browser-tests.html',
   'dev/browser-tests.js',
   'dev/popup-fixture.js',
@@ -23,6 +25,19 @@ export function sourceRevision(root = ROOT, files = [...WATCH_FILES, ...TOOLING_
   return hash.digest('hex');
 }
 
+/**
+ * The manifest has no "key", so Chrome derives the unpacked development build's
+ * id from the absolute path it was loaded from: sha256(path), first 32 hex
+ * digits mapped 0-f -> a-p. The server accepts only this origin.
+ */
+export function extensionOrigin(root = ROOT) {
+  const hex = createHash('sha256')
+    .update(join(realpathSync(root), '.dev-build'))
+    .digest('hex')
+    .slice(0, 32);
+  return `chrome-extension://${[...hex].map((c) => String.fromCharCode(97 + Number.parseInt(c, 16))).join('')}`;
+}
+
 export function buildDevelopment({ root = ROOT, port = PORT } = {}) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid development port.');
   const revision = sourceRevision(root);
@@ -36,10 +51,11 @@ export function buildDevelopment({ root = ROOT, port = PORT } = {}) {
       manifest.minimum_chrome_version = String(Math.max(120, Number.parseInt(manifest.minimum_chrome_version || '0')));
       manifest.permissions = [...new Set([...manifest.permissions, 'alarms'])];
       manifest.host_permissions = [...new Set([...manifest.host_permissions, 'http://127.0.0.1/*'])];
-      // Only the worker opens the socket. Keep remote code and eval forbidden.
+      // Only the worker opens the socket; dev/dev-connect.html fetches the HTTP
+      // origin to ask for local network access. Keep remote code and eval forbidden.
       manifest.content_security_policy = {
         ...manifest.content_security_policy,
-        extension_pages: `script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:${port} http://127.0.0.1:8397 https://api.anthropic.com https://api.openai.com https://*.aliyuncs.com https://api.deepseek.com`,
+        extension_pages: `script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:${port} http://127.0.0.1:${port} http://127.0.0.1:8397 https://api.anthropic.com https://api.openai.com https://*.aliyuncs.com https://api.deepseek.com`,
       };
       writeFileSync(join(staging, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
       for (const [size, path] of Object.entries(manifest.icons)) {
@@ -62,11 +78,17 @@ export function buildDevelopment({ root = ROOT, port = PORT } = {}) {
           '<p style="padding: 0 18px"><a href="dev/browser-tests.html" target="_blank" rel="noopener">Browser regression tests</a></p></body>',
         ),
       );
-      const config = { revision, endpoint: `ws://127.0.0.1:${port}/reload` };
-      writeFileSync(
-        join(staging, 'dev/hot-reload.js'),
-        `globalThis.SHIELD_DEV = ${JSON.stringify(config)};\n${readFileSync(join(root, 'dev/hot-reload.js'), 'utf8')}`,
-      );
+      const config = {
+        revision,
+        endpoint: `ws://127.0.0.1:${port}/reload`,
+        grant: `http://127.0.0.1:${port}/grant`,
+      };
+      for (const file of ['dev/hot-reload.js', 'dev/dev-connect.js']) {
+        writeFileSync(
+          join(staging, file),
+          `globalThis.SHIELD_DEV = ${JSON.stringify(config)};\n${readFileSync(join(root, file), 'utf8')}`,
+        );
+      }
       const worker = join(staging, manifest.background.service_worker);
       writeFileSync(worker, `importScripts('dev/hot-reload.js');\n${readFileSync(worker, 'utf8')}`);
     },

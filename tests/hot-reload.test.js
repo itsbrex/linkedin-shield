@@ -8,11 +8,12 @@ const nextRevision = 'b'.repeat(64);
 const pending = 'shieldDevReloadPending';
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function worker(storage = {}) {
+function worker(storage = {}, { start = true } = {}) {
   const sockets = [];
   const intervals = [];
   const timeouts = [];
   const alarms = [];
+  const installed = [];
   class Socket {
     static OPEN = 1;
     static CLOSING = 2;
@@ -42,8 +43,13 @@ function worker(storage = {}) {
         remove: vi.fn(async (key) => delete storage[key]),
       },
     },
-    runtime: { reload: vi.fn(), onStartup: { addListener: vi.fn() } },
-    tabs: { query: vi.fn(async () => [{ id: 7 }]), reload: vi.fn(async () => {}) },
+    runtime: {
+      reload: vi.fn(),
+      getURL: (path) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+      onStartup: { addListener: vi.fn() },
+      onInstalled: { addListener: (listener) => installed.push(listener) },
+    },
+    tabs: { query: vi.fn(async () => [{ id: 7 }]), reload: vi.fn(async () => {}), create: vi.fn(async () => {}) },
     alarms: {
       create: vi.fn(async () => {}),
       onAlarm: { addListener: (listener) => alarms.push(listener) },
@@ -60,7 +66,9 @@ function worker(storage = {}) {
     clearTimeout: vi.fn(),
   };
   runInNewContext(client, context);
-  return { ...context, sockets, intervals, timeouts, alarms };
+  // The first connection is scheduled for after the worker script evaluates.
+  if (start) timeouts.shift().fn();
+  return { ...context, sockets, intervals, timeouts, alarms, installed };
 }
 
 describe('Development worker hot reload', () => {
@@ -103,12 +111,62 @@ describe('Development worker hot reload', () => {
     expect(laterWorker.chrome.tabs.reload).not.toHaveBeenCalled();
   });
 
+  it('connects only after the worker script finishes evaluating', () => {
+    const state = worker({}, { start: false });
+    expect(state.sockets).toHaveLength(0);
+    expect(state.timeouts).toHaveLength(1);
+    expect(state.timeouts[0].delay).toBe(0);
+    state.timeouts[0].fn();
+    expect(state.sockets).toHaveLength(1);
+  });
+
+  it('keeps retrying with capped backoff and resets it after connecting', () => {
+    const state = worker();
+    const delays = [];
+    for (let attempt = 0; attempt < 6; attempt++) {
+      state.sockets.at(-1).close();
+      const retry = state.timeouts.shift();
+      delays.push(retry.delay);
+      retry.fn();
+    }
+    expect(delays).toEqual([500, 1000, 2000, 4000, 5000, 5000]);
+    expect(state.sockets).toHaveLength(7);
+    state.sockets.at(-1).open();
+    state.sockets.at(-1).close();
+    expect(state.timeouts.shift().delay).toBe(500);
+  });
+
+  it('asks for local network access once when connecting fails right after a reload', () => {
+    const state = worker();
+    expect(state.installed).toHaveLength(1);
+    state.installed[0]({ reason: 'update' });
+    state.sockets[0].close();
+    expect(state.chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({
+      url: `chrome-extension://${'a'.repeat(32)}/dev/dev-connect.html`,
+    });
+    state.timeouts.shift().fn();
+    state.sockets[1].close();
+    expect(state.chrome.tabs.create).toHaveBeenCalledTimes(1);
+
+    const connected = worker();
+    connected.installed[0]({ reason: 'update' });
+    connected.sockets[0].open();
+    connected.sockets[0].close();
+    connected.timeouts.shift().fn();
+    connected.sockets[1].close();
+    expect(connected.chrome.tabs.create).not.toHaveBeenCalled();
+
+    const started = worker();
+    started.sockets[0].close();
+    expect(started.chrome.tabs.create).not.toHaveBeenCalled();
+  });
+
   it('reconnects after disconnects and worker suspension without duplicate sockets', () => {
     const state = worker();
     state.sockets[0].open();
     state.sockets[0].close();
     expect(state.clearInterval).toHaveBeenCalledTimes(1);
-    expect(state.timeouts[0].delay).toBe(2000);
+    expect(state.timeouts[0].delay).toBe(500);
     state.timeouts[0].fn();
     expect(state.sockets).toHaveLength(2);
     expect(state.chrome.alarms.create).toHaveBeenCalledWith('shield-dev-reconnect', { periodInMinutes: 0.5 });

@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { unzipSync } from 'fflate';
 import { WebSocket } from 'ws';
 import { buildExtension, ROOT, RUNTIME_FILES } from '../scripts/build.mjs';
-import { buildDevelopment, DEV_FILES } from '../dev/build.mjs';
+import { buildDevelopment, DEV_FILES, extensionOrigin } from '../dev/build.mjs';
 import { startDevelopment } from '../dev/server.mjs';
 import { packageExtension } from '../scripts/package.mjs';
 
@@ -52,8 +52,11 @@ describe('Development and release builds', () => {
     expect(dev.permissions).toContain('alarms');
     expect(dev.host_permissions).toContain('http://127.0.0.1/*');
     expect(dev.content_security_policy.extension_pages).toContain('ws://127.0.0.1:8396');
+    expect(dev.content_security_policy.extension_pages).toContain('http://127.0.0.1:8396 ');
     expect(read('.dev-build/background.js').toString()).toMatch(/^importScripts\('dev\/hot-reload.js'\)/);
     expect(read('.dev-build/dev/hot-reload.js').toString()).toContain(revision);
+    expect(read('.dev-build/dev/dev-connect.js').toString()).toContain('"grant":"http://127.0.0.1:8396/grant"');
+    expect(read('.dev-build/dev/dev-connect.html').toString()).toContain('<script src="dev-connect.js"></script>');
     for (const [size, file] of Object.entries(dev.icons)) {
       const icon = read(`.dev-build/${file}`);
       expect(icon.readUInt32BE(16)).toBe(Number(size));
@@ -106,9 +109,7 @@ describe('Development and release builds', () => {
     running = null;
     writeFileSync(join(root, 'popup.js'), '// saved while offline');
     running = await startDevelopment({ root, port, log: () => {} });
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/reload`, {
-      origin: `chrome-extension://${'a'.repeat(32)}`,
-    });
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/reload`, { origin: extensionOrigin(root) });
     clients.push(socket);
     const message = await new Promise((done) => socket.once('message', (data) => done(JSON.parse(data))));
     expect(message.type).toBe('built');
@@ -128,9 +129,7 @@ describe('Development and release builds', () => {
       watchDirectory: () => ({ on() {}, close() {} }),
     });
     const origin = `http://127.0.0.1:${running.port}`;
-    const socket = new WebSocket(origin.replace('http:', 'ws:') + '/reload', {
-      origin: `chrome-extension://${'a'.repeat(32)}`,
-    });
+    const socket = new WebSocket(origin.replace('http:', 'ws:') + '/reload', { origin: extensionOrigin(root) });
     clients.push(socket);
     socket.on('message', (bytes) => messages.push(JSON.parse(bytes)));
     await eventually(() => messages.length).toBe(1);
@@ -157,13 +156,20 @@ describe('Development and release builds', () => {
       .poll(async () => (await (await fetch(origin + '/health')).json()).loadedRevisions)
       .toEqual([messages[2].revision]);
     expect((await fetch(origin + '/manifest.json')).status).toBe(404);
+    const grant = await fetch(origin + '/grant', { headers: { Origin: extensionOrigin(root) } });
+    expect(grant.status).toBe(200);
+    expect(grant.headers.get('access-control-allow-origin')).toBe(extensionOrigin(root));
+    const foreign = await fetch(origin + '/grant', { headers: { Origin: 'https://example.com' } });
+    expect(foreign.headers.get('access-control-allow-origin')).toBeNull();
   }, 15000);
 
-  it('rejects web-page socket origins and fails on port conflicts without replacing an installed build', async () => {
+  it('rejects web-page and other extension origins and fails on port conflicts without replacing an installed build', async () => {
     running = await startDevelopment({ root, port: 0, log: () => {} });
-    const socket = new WebSocket(`ws://127.0.0.1:${running.port}/reload`, { origin: 'https://example.com' });
-    const failure = await new Promise((done) => socket.once('error', done));
-    expect(failure.message).toContain('403');
+    for (const origin of ['https://example.com', `chrome-extension://${'a'.repeat(32)}`]) {
+      const socket = new WebSocket(`ws://127.0.0.1:${running.port}/reload`, { origin });
+      const failure = await new Promise((done) => socket.once('error', done));
+      expect(failure.message).toContain('403');
+    }
     const before = read('.dev-build/manifest.json');
     await expect(startDevelopment({ root, port: running.port, log: () => {} })).rejects.toThrow('EADDRINUSE');
     expect(read('.dev-build/manifest.json')).toEqual(before);

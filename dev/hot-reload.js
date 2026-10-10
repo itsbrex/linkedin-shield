@@ -7,6 +7,9 @@
   let socket;
   let retry;
   let reloading = false;
+  let delay = 500;
+  let installed = false;
+  let helped = false;
 
   async function reloadExtension(revision) {
     if (reloading) return;
@@ -31,7 +34,11 @@
     socket = new WebSocket(SHIELD_DEV.endpoint);
     const connection = socket;
     let heartbeat;
+    let opened = false;
     socket.onopen = () => {
+      opened = true;
+      helped = true; // connected, so local network access is not what's failing
+      delay = 500;
       connection.send(JSON.stringify({ type: 'ready', revision: SHIELD_DEV.revision }));
       heartbeat = setInterval(() => {
         if (connection.readyState === WebSocket.OPEN) connection.send('keepalive');
@@ -60,10 +67,26 @@
     socket.onclose = () => {
       clearInterval(heartbeat);
       if (socket === connection) socket = null;
-      if (!reloading) retry = setTimeout(connect, 2000);
+      // Just installed or reloaded and still can't connect: the browser may be
+      // blocking the worker's local network access (workers cannot show that
+      // prompt). dev/dev-connect.html asks from a page; it closes itself on success.
+      if (!opened && installed && !helped) {
+        helped = true;
+        chrome.tabs.create({ url: chrome.runtime.getURL('dev/dev-connect.html') });
+      }
+      // Keep trying while the worker lives (capped backoff).
+      if (!reloading) {
+        retry = setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 5000);
+      }
     };
   }
 
+  // Registering onInstalled also makes Chrome start the worker right after each
+  // runtime.reload() (MV3 starts workers only for events they listen to).
+  chrome.runtime.onInstalled.addListener(() => {
+    installed = true;
+  });
   // Timers alone cannot wake a suspended MV3 worker after the server restarts.
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === ALARM) connect();
@@ -71,5 +94,6 @@
   chrome.runtime.onStartup.addListener(connect);
   chrome.alarms.create(ALARM, { periodInMinutes: 0.5 }).catch(() => {});
   refreshPagesAfterReload().catch((error) => console.warn('[Shield DEV] page refresh failed:', error.message));
-  connect();
+  // Connect after the worker script finishes evaluating.
+  setTimeout(connect, 0);
 })();

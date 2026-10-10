@@ -38,19 +38,37 @@ produces one restart notice and preserves the previous build.
 Failed builds retain the previous output and send no reload signal. Restart the
 command after editing build/server/icon tooling or changing dependencies.
 
-The worker sends a heartbeat every 20 seconds. A two-second retry handles brief
-disconnects; a 30-second development-only alarm can wake a suspended MV3 worker
-after the server returns. A reconnect compares the installed hash to the current
-build, so changes made while disconnected are picked up. Browser extensions
-disabled by the user must still be enabled manually.
+The worker sends a heartbeat every 20 seconds. Retries start at 500 ms and back
+off to a 5-second cap for as long as the worker lives, so restarting `npm run dev`
+reconnects within seconds; a 30-second development-only alarm can wake a
+suspended MV3 worker after the server returns. The client connects only after the
+worker script finishes evaluating, and registers `chrome.runtime.onInstalled` so
+Chrome restarts the worker right after each `chrome.runtime.reload()`. A
+reconnect compares the installed hash to the current build, so changes made while
+disconnected are picked up. Browser extensions disabled by the user must still be
+enabled manually.
+
+Keep Developer Mode on. With it off, Chrome and Comet disable an unpacked
+extension that reloads itself (`unsupportedDeveloperExtension`), and the worker
+never returns.
+
+Chromium's Local Network Access rules let a worker reach `127.0.0.1` only after
+the extension's origin holds that permission, and a worker cannot show the
+prompt. If the first connection after an install or reload fails, the worker
+opens `dev/dev-connect.html` once. That page requests `/grant` from the server,
+which can trigger the browser prompt; allow it, and the tab closes itself on
+success.
 
 ## Port and diagnostics
 
 The default server binds only to `127.0.0.1:8396`. It does not serve source files,
-accept commands, or load remote JavaScript. WebSocket upgrades require a Chrome
-extension Origin and the expected loopback Host; messages carry build hashes only.
-This is a local development aid, not an authentication boundary against other
-installed extensions or local processes. Stop it when not developing.
+accept commands, or load remote JavaScript. WebSocket upgrades require this
+checkout's development extension Origin (its id is derived from the real path of
+`.dev-build/`) and the expected loopback Host; other origins get 403. Messages
+carry build hashes only. Loading `.dev-build/` from a copy or another path changes
+the id, so the server refuses it; load this checkout's folder. This is a local
+development aid, not an authentication boundary against local processes. Stop it
+when not developing.
 
 ```sh
 npm run build:dev                      # Build once without starting the server
@@ -64,8 +82,13 @@ default port, the health response's `loadedRevisions` should contain `revision`
 after a worker connects. This acknowledges worker code; it does not prove popup
 rendering, page protection, or declarative network blocking.
 
-If reload stops: check terminal errors, confirm the dev extension is enabled,
-wait up to 30 seconds for its reconnect alarm, then inspect its service worker
+The terminal logs `[dev] extension connected, running build <hash>` and
+`[dev] extension disconnected`, so you can see which build the browser runs.
+
+If reload stops: check terminal errors, confirm the dev extension is enabled and
+Developer Mode is on, open `dev/dev-connect.html` from the extension if no
+`extension connected` line appears, wait up to 30 seconds for its reconnect
+alarm, then inspect its service worker
 from the extensions page. Opening DevTools can keep a worker alive; also test
 reconnection with DevTools closed. Permission changes may require browser approval
 and a manual reload. If a file goes missing during an editor save, restore it and
